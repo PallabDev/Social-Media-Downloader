@@ -7,16 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 type Platform = "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown";
+
+interface Format {
+  format_id: string;
+  label: string;
+  ext: string;
+  type: "video" | "audio" | "video+audio";
+  height: number | null;
+  fps: number | null;
+  filesize: string;
+  bitrate: string;
+}
 
 interface VideoInfo {
   success: boolean;
@@ -29,7 +32,7 @@ interface VideoInfo {
   view_count: number;
   upload_date: string;
   description: string;
-  formats: unknown[];
+  formats: Format[];
   error?: string;
 }
 
@@ -55,33 +58,25 @@ export default function Home() {
   const [url, setUrl] = useState("");
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [format, setFormat] = useState<"mp4" | "mp3">("mp4");
-  const [quality, setQuality] = useState("720p");
   const [error, setError] = useState("");
-  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [tab, setTab] = useState<"video" | "audio">("video");
 
   const fetchInfo = useCallback(async () => {
     if (!url.trim()) return;
-
     setLoading(true);
     setError("");
     setVideoInfo(null);
-
     try {
       const res = await fetch("/api/info", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         setError(data.error || "Failed to fetch video info");
         return;
       }
-
       setVideoInfo(data);
     } catch {
       setError("Network error. Please try again.");
@@ -90,30 +85,15 @@ export default function Home() {
     }
   }, [url]);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback((formatId: string, isAudio: boolean) => {
     if (!videoInfo || !url.trim()) return;
-
-    setDownloading(true);
-
-    const params = new URLSearchParams({
-      url: url.trim(),
-      format,
-    });
-    if (format === "mp4") {
-      params.set("quality", quality);
-    }
-
+    const params = new URLSearchParams({ url: url.trim(), format_id: formatId });
+    if (isAudio) params.set("format", "mp3");
     window.open(`/download?${params.toString()}`, "_blank");
-
-    setTimeout(() => {
-      setDownloading(false);
-    }, 1000);
-  }, [videoInfo, url, format, quality]);
+  }, [videoInfo, url]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !loading) {
-      fetchInfo();
-    }
+    if (e.key === "Enter" && !loading) fetchInfo();
   };
 
   const formatNumber = (num: number) => {
@@ -122,10 +102,12 @@ export default function Home() {
     return num.toString();
   };
 
+  const videoFormats = videoInfo?.formats.filter((f) => f.type === "video+audio" || f.type === "video") || [];
+  const audioFormats = videoInfo?.formats.filter((f) => f.type === "audio") || [];
+
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-4 py-16 relative z-10">
-        {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-br from-white via-white to-zinc-500 bg-clip-text text-transparent">
             Social Media Downloader
@@ -135,7 +117,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* URL Input */}
         <Card className="glass-card mb-6 rounded-xl">
           <CardContent className="p-5">
             <Label htmlFor="url" className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -173,7 +154,6 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* Error */}
         {error && (
           <Card className="glass-card border-red-500/20 mb-6 rounded-xl">
             <CardContent className="p-4">
@@ -182,28 +162,22 @@ export default function Home() {
           </Card>
         )}
 
-        {/* Video Preview */}
         {videoInfo && videoInfo.success && (
-          <Card className="glass-card mb-6 rounded-xl overflow-hidden">
+          <Card className="glass-card rounded-xl overflow-hidden">
             <CardContent className="p-5">
-              {/* Platform Badge & Duration */}
               <div className="flex items-center justify-between mb-4">
                 <Badge className={`${platformColors[videoInfo.platform]} rounded-full text-xs font-medium px-3 py-1`}>
                   {platformLabels[videoInfo.platform]}
                 </Badge>
-                <span className="text-xs text-zinc-500 font-mono">
-                  {videoInfo.duration_string}
-                </span>
+                <span className="text-xs text-zinc-500 font-mono">{videoInfo.duration_string}</span>
               </div>
 
-              {/* Thumbnail */}
               {videoInfo.thumbnail && (
                 <div className="relative mb-4 rounded-lg overflow-hidden bg-white/5">
                   <img
                     src={`/api/thumb?src=${encodeURIComponent(videoInfo.thumbnail)}`}
                     alt={videoInfo.title}
                     className="w-full aspect-video object-cover"
-                    crossOrigin="anonymous"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                   <div className="absolute bottom-3 left-3 right-3">
@@ -214,113 +188,101 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Title & Metadata */}
-              <h2 className="text-base font-semibold text-white leading-tight mb-2">
-                {videoInfo.title}
-              </h2>
-              <p className="text-xs text-zinc-500 mb-1">
-                {videoInfo.uploader}
-              </p>
+              <h2 className="text-base font-semibold text-white leading-tight mb-2">{videoInfo.title}</h2>
+              <p className="text-xs text-zinc-500 mb-1">{videoInfo.uploader}</p>
               {videoInfo.view_count > 0 && (
-                <p className="text-xs text-zinc-600">
-                  {formatNumber(videoInfo.view_count)} views
-                </p>
+                <p className="text-xs text-zinc-600">{formatNumber(videoInfo.view_count)} views</p>
               )}
 
               <Separator className="my-4 bg-white/5" />
 
-              {/* Format Selection */}
-              <div className="space-y-3">
-                <Label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                  Format
-                </Label>
-                <div className="flex gap-2">
-                  <Button
-                    variant={format === "mp4" ? "default" : "outline"}
-                    onClick={() => setFormat("mp4")}
-                    className={`h-9 px-5 rounded-lg text-sm font-medium transition-all ${
-                      format === "mp4"
-                        ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/25"
-                        : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    MP4
-                  </Button>
-                  <Button
-                    variant={format === "mp3" ? "default" : "outline"}
-                    onClick={() => setFormat("mp3")}
-                    className={`h-9 px-5 rounded-lg text-sm font-medium transition-all ${
-                      format === "mp3"
-                        ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/25"
-                        : "bg-white/5 text-zinc-400 border-white/10 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    MP3
-                  </Button>
-                </div>
-
-                {/* Quality Selection */}
-                {format === "mp4" && (
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                      Quality
-                    </Label>
-                    <Select value={quality} onValueChange={(v) => v && setQuality(v)}>
-                      <SelectTrigger className="h-9 bg-white/5 border-white/10 rounded-lg text-sm w-full focus:ring-indigo-500/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-zinc-900 border-white/10 rounded-lg">
-                        <SelectItem value="1080p" className="text-sm focus:bg-indigo-500/20 focus:text-indigo-300">1080p (Full HD)</SelectItem>
-                        <SelectItem value="720p" className="text-sm focus:bg-indigo-500/20 focus:text-indigo-300">720p (HD)</SelectItem>
-                        <SelectItem value="480p" className="text-sm focus:bg-indigo-500/20 focus:text-indigo-300">480p (SD)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {format === "mp3" && (
-                  <div className="bg-white/5 border border-white/5 rounded-lg p-3">
-                    <p className="text-xs text-zinc-500">
-                      Audio only &middot; 256kbps MP3
-                    </p>
-                  </div>
-                )}
+              {/* Tabs */}
+              <div className="flex gap-1 mb-4 bg-white/5 rounded-lg p-1">
+                <button
+                  onClick={() => setTab("video")}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${
+                    tab === "video"
+                      ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Video ({videoFormats.length})
+                </button>
+                <button
+                  onClick={() => setTab("audio")}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${
+                    tab === "audio"
+                      ? "bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Audio ({audioFormats.length})
+                </button>
               </div>
 
-              {/* Download Button */}
-              <div className="mt-5">
-                {downloadProgress > 0 && (
-                  <Progress value={downloadProgress} className="h-1.5 mb-3 rounded-full bg-white/5" />
+              {/* Format List */}
+              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                {tab === "video" && videoFormats.map((f) => (
+                  <button
+                    key={f.format_id}
+                    onClick={() => handleDownload(f.format_id, false)}
+                    className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-white group-hover:text-indigo-400 transition-colors">
+                          {f.label}
+                        </span>
+                        <span className="text-[10px] text-zinc-600 font-mono">{f.ext}</span>
+                        {f.type === "video" && (
+                          <span className="text-[10px] text-yellow-500/80 bg-yellow-500/10 px-1.5 py-0.5 rounded">
+                            no audio
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        {f.filesize && <span className="text-[11px] text-zinc-600">{f.filesize}</span>}
+                        {f.bitrate && <span className="text-[11px] text-zinc-600">{f.bitrate}</span>}
+                        {f.fps && f.fps > 30 && <span className="text-[11px] text-zinc-600">{f.fps}fps</span>}
+                      </div>
+                    </div>
+                    <svg className="w-4 h-4 text-zinc-600 group-hover:text-indigo-400 transition-colors shrink-0 ml-2" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                  </button>
+                ))}
+
+                {tab === "audio" && audioFormats.map((f) => (
+                  <button
+                    key={f.format_id}
+                    onClick={() => handleDownload(f.format_id, true)}
+                    className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-white group-hover:text-indigo-400 transition-colors">
+                        {f.label}
+                      </span>
+                      <div className="flex items-center gap-3 mt-1">
+                        {f.filesize && <span className="text-[11px] text-zinc-600">{f.filesize}</span>}
+                        {f.bitrate && <span className="text-[11px] text-zinc-600">{f.bitrate}</span>}
+                      </div>
+                    </div>
+                    <svg className="w-4 h-4 text-zinc-600 group-hover:text-indigo-400 transition-colors shrink-0 ml-2" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                  </button>
+                ))}
+
+                {tab === "video" && videoFormats.length === 0 && (
+                  <p className="text-sm text-zinc-600 text-center py-4">No video formats available</p>
                 )}
-                <Button
-                  onClick={handleDownload}
-                  disabled={downloading}
-                  className="w-full h-11 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white rounded-lg font-medium text-sm shadow-lg shadow-indigo-500/25 transition-all"
-                >
-                  {downloading ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Downloading...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                      </svg>
-                      Download {format.toUpperCase()}
-                      {format === "mp4" ? ` (${quality})` : " (256kbps)"}
-                    </span>
-                  )}
-                </Button>
+                {tab === "audio" && audioFormats.length === 0 && (
+                  <p className="text-sm text-zinc-600 text-center py-4">No audio formats available</p>
+                )}
               </div>
             </CardContent>
           </Card>
         )}
-
-
       </div>
     </div>
   );

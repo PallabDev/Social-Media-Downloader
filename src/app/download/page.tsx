@@ -8,6 +8,7 @@ function DownloadContent() {
   const url = searchParams.get("url") || "";
   const format = searchParams.get("format") || "mp4";
   const quality = searchParams.get("quality") || "720p";
+  const formatId = searchParams.get("format_id") || "";
 
   const [status, setStatus] = useState<"preparing" | "downloading" | "error">("preparing");
   const [elapsed, setElapsed] = useState(0);
@@ -24,7 +25,8 @@ function DownloadContent() {
     }
 
     const params = new URLSearchParams({ url, format });
-    if (format === "mp4") params.set("quality", quality);
+    if (formatId) params.set("format_id", formatId);
+    else if (format === "mp4") params.set("quality", quality);
 
     const downloadUrl = `/api/download?${params.toString()}`;
 
@@ -43,7 +45,7 @@ function DownloadContent() {
     };
   }, [url, format, quality]);
 
-  const formatLabel = format === "mp3" ? "MP3 (256kbps)" : `MP4 (${quality})`;
+  const formatLabel = formatId ? `Format #${formatId}` : format === "mp3" ? "MP3 (256kbps)" : `MP4 (${quality})`;
 
   return (
     <div className="min-h-screen flex items-center justify-center">
@@ -105,7 +107,8 @@ function DownloadContent() {
                   <button
                     onClick={() => {
                       const params = new URLSearchParams({ url, format });
-                      if (format === "mp4") params.set("quality", quality);
+                      if (formatId) params.set("format_id", formatId);
+                      else if (format === "mp4") params.set("quality", quality);
                       window.location.href = `/api/download?${params.toString()}`;
                     }}
                     className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"

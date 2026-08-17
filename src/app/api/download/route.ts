@@ -35,14 +35,19 @@ function runYtdlp(args: string[]): Promise<{ success: boolean; outputPath?: stri
 
     child.on("close", (code) => {
       if (code === 0) {
-        const outputDir = args[args.indexOf("-o") + 1];
-        const parentDir = join(outputDir, "..");
+        const outputTemplate = args[args.indexOf("-o") + 1];
+        const outputDir = join(outputTemplate, "..");
         try {
-          const files = readdirSync(parentDir);
-          const match = files.find((f) => f.includes(outputDir.split("/").pop() || ""));
-          resolve({ success: true, outputPath: join(parentDir, match || "") });
+          const files = readdirSync(outputDir);
+          const baseName = outputTemplate.split("/").pop() || "";
+          const match = files.find((f) => f.startsWith(baseName));
+          if (match) {
+            resolve({ success: true, outputPath: join(outputDir, match) });
+          } else {
+            resolve({ success: false, error: "Output file not found" });
+          }
         } catch {
-          resolve({ success: false, error: stderr || "Output not found" });
+          resolve({ success: false, error: "Output directory error" });
         }
       } else {
         resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
@@ -57,6 +62,7 @@ function runYtdlp(args: string[]): Promise<{ success: boolean; outputPath?: stri
 
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get("url");
+  const formatId = request.nextUrl.searchParams.get("format_id");
   const format = request.nextUrl.searchParams.get("format") || "mp4";
   const quality = request.nextUrl.searchParams.get("quality") || "720p";
 
@@ -64,18 +70,89 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "URL is required" }, { status: 400 });
   }
 
-  if (!["mp4", "mp3"].includes(format)) {
-    return Response.json({ error: "Format must be mp4 or mp3" }, { status: 400 });
+  const platform = detectPlatform(url.trim());
+  const isAudioOnly = format === "mp3";
+
+  // If a specific format_id is provided, use it directly
+  if (formatId) {
+    const fileName = `download.${isAudioOnly ? "mp3" : "mp4"}`;
+    const contentType = isAudioOnly ? "audio/mpeg" : "video/mp4";
+
+    // Check if it's an audio format
+    const isAudioFormat = formatId.startsWith("140") || formatId.startsWith("251") || formatId.startsWith("250") || formatId.startsWith("249") || formatId.includes("audio");
+
+    if (isAudioFormat || isAudioOnly) {
+      const tmpDir = mkdtempSync(join(tmpdir(), "sdl-"));
+      const outputTemplate = join(tmpDir, "output");
+
+      const args = [
+        ...BASE_ARGS,
+        "-f", formatId,
+        "-x" ,
+        "--audio-format", "mp3",
+        "--audio-quality", "256K",
+        "-o", outputTemplate,
+        url.trim(),
+      ];
+
+      const result = await runYtdlp(args);
+
+      if (!result.success || !result.outputPath) {
+        try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        return Response.json({ error: result.error || "Download failed" }, { status: 500 });
+      }
+
+      const fileBuffer = readFileSync(result.outputPath);
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+      return new Response(fileBuffer, {
+        status: 200,
+        headers: {
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "Content-Type": contentType,
+          "Content-Length": fileBuffer.length.toString(),
+        },
+      });
+    }
+
+    // Video format - stream directly
+    const args = [
+      ...BASE_ARGS,
+      "-f", `${formatId}+bestaudio/best`,
+      "--merge-output-format", "mp4",
+      "-o", "-",
+      url.trim(),
+    ];
+
+    const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+
+    const webStream = new ReadableStream({
+      start(controller) {
+        child.stdout.on("data", (chunk: Buffer) => {
+          controller.enqueue(new Uint8Array(chunk));
+        });
+        child.stdout.on("end", () => controller.close());
+        child.on("error", (err) => controller.error(err));
+        child.stderr.on("data", () => {});
+      },
+      cancel() {
+        child.kill("SIGTERM");
+      },
+    });
+
+    return new Response(webStream, {
+      status: 200,
+      headers: {
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Type": contentType,
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-cache",
+      },
+    });
   }
 
-  if (format === "mp4" && !["1080p", "720p", "480p"].includes(quality)) {
-    return Response.json({ error: "Invalid quality" }, { status: 400 });
-  }
-
-  const fileName = `download.${format === "mp3" ? "mp3" : "mp4"}`;
-  const contentType = format === "mp3" ? "audio/mpeg" : "video/mp4";
-
-  if (format === "mp3") {
+  // Fallback: use quality string
+  if (isAudioOnly) {
     const tmpDir = mkdtempSync(join(tmpdir(), "sdl-"));
     const outputTemplate = join(tmpDir, "audio");
 
@@ -102,8 +179,8 @@ export async function GET(request: NextRequest) {
     return new Response(fileBuffer, {
       status: 200,
       headers: {
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="download.mp3"`,
+        "Content-Type": "audio/mpeg",
         "Content-Length": fileBuffer.length.toString(),
       },
     });
@@ -115,7 +192,6 @@ export async function GET(request: NextRequest) {
     "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/best",
   };
 
-  const platform = detectPlatform(url.trim());
   let fmtStr = formatMap[quality] || formatMap["720p"];
   if (platform === "instagram" || platform === "facebook") {
     fmtStr = "best[ext=mp4]/best";
@@ -136,15 +212,8 @@ export async function GET(request: NextRequest) {
       child.stdout.on("data", (chunk: Buffer) => {
         controller.enqueue(new Uint8Array(chunk));
       });
-
-      child.stdout.on("end", () => {
-        controller.close();
-      });
-
-      child.on("error", (err) => {
-        controller.error(err);
-      });
-
+      child.stdout.on("end", () => controller.close());
+      child.on("error", (err) => controller.error(err));
       child.stderr.on("data", () => {});
     },
     cancel() {
@@ -155,8 +224,8 @@ export async function GET(request: NextRequest) {
   return new Response(webStream, {
     status: 200,
     headers: {
-      "Content-Disposition": `attachment; filename="${fileName}"`,
-      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="download.mp4"`,
+      "Content-Type": "video/mp4",
       "Transfer-Encoding": "chunked",
       "Cache-Control": "no-cache",
     },
