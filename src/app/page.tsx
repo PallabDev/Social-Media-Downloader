@@ -90,65 +90,31 @@ export default function Home() {
     }
   }, [url]);
 
-  const handleDownload = useCallback(async () => {
+  const handleDownload = useCallback(() => {
     if (!videoInfo || !url.trim()) return;
 
     setDownloading(true);
     setDownloadProgress(0);
 
-    const progressInterval = setInterval(() => {
-      setDownloadProgress((prev) => {
-        if (prev >= 90) return prev;
-        return prev + Math.random() * 15;
-      });
-    }, 1000);
-
-    try {
-      const res = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: url.trim(),
-          format,
-          quality: format === "mp4" ? quality : undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Download failed");
-        return;
-      }
-
-      const contentDisposition = res.headers.get("Content-Disposition");
-      const fileNameMatch = contentDisposition?.match(/filename="?(.+?)"?$/);
-      const fileName = fileNameMatch?.[1] || `download.${format === "mp3" ? "mp3" : "mp4"}`;
-
-      const blob = await res.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(downloadUrl);
-      document.body.removeChild(a);
-
-      setDownloadProgress(100);
-
-      fetch("/api/cleanup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName }),
-      });
-    } catch {
-      setError("Download failed. Please try again.");
-    } finally {
-      clearInterval(progressInterval);
-      setDownloading(false);
-      setTimeout(() => setDownloadProgress(0), 2000);
+    const params = new URLSearchParams({
+      url: url.trim(),
+      format,
+    });
+    if (format === "mp4") {
+      params.set("quality", quality);
     }
+
+    const a = document.createElement("a");
+    a.href = `/api/download?${params.toString()}`;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    setTimeout(() => {
+      setDownloading(false);
+      setDownloadProgress(0);
+    }, 3000);
   }, [videoInfo, url, format, quality]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

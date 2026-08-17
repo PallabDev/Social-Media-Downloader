@@ -5,10 +5,11 @@ import { statSync, createReadStream } from "fs";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { url, format, quality } = body;
+    const url = request.nextUrl.searchParams.get("url");
+    const format = request.nextUrl.searchParams.get("format");
+    const quality = request.nextUrl.searchParams.get("quality");
 
     if (!url || typeof url !== "string") {
       return Response.json({ error: "URL is required" }, { status: 400 });
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Invalid quality" }, { status: 400 });
     }
 
-    const result = await downloadMedia(url.trim(), format, quality || "720p");
+    const result = await downloadMedia(url.trim(), format as "mp4" | "mp3", quality || "720p");
 
     if (!result.success || !result.filePath) {
       return Response.json({ error: result.error || "Download failed" }, { status: 500 });
