@@ -206,7 +206,7 @@ export default function Home() {
               {videoInfo.thumbnail && (
                 <div className="relative mb-4 rounded-lg overflow-hidden bg-white/5">
                   <img
-                    src={videoInfo.thumbnail}
+                    src={`/api/thumb?src=${encodeURIComponent(videoInfo.thumbnail)}`}
                     alt={videoInfo.title}
                     className="w-full aspect-video object-cover"
                     crossOrigin="anonymous"
