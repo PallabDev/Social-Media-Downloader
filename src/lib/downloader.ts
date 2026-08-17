@@ -131,22 +131,17 @@ export async function fetchVideoInfo(url: string) {
   const isYouTube = platform === "youtube";
 
   const runYtDlp = async (extraArgs: string[]) => {
-    try {
-      const { stdout } = await execFileAsync("yt-dlp", [
-        ...BASE_ARGS,
-        ...extraArgs,
-        "--dump-json",
-        "--no-download",
-        url,
-      ], { timeout: 30000 });
-      if (!stdout || stdout.trim().length === 0) {
-        throw new Error("Empty response from yt-dlp");
-      }
-      return JSON.parse(stdout);
-    } catch (err: any) {
-      console.error("[yt-dlp] args:", extraArgs.length > 0 ? "fallback" : "default", "error:", err?.message?.slice(0, 200));
-      throw err;
+    const { stdout } = await execFileAsync("yt-dlp", [
+      ...BASE_ARGS,
+      ...extraArgs,
+      "--dump-json",
+      "--no-download",
+      url,
+    ], { timeout: 30000 });
+    if (!stdout || stdout.trim().length === 0) {
+      throw new Error("Empty response from yt-dlp");
     }
+    return JSON.parse(stdout);
   };
 
   const runYtDlpSafe = async (extraArgs: string[]): Promise<any> => {
