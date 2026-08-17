@@ -103,17 +103,11 @@ export default function Home() {
       params.set("quality", quality);
     }
 
-    const link = document.createElement("a");
-    link.href = `/api/download?${params.toString()}`;
-    link.target = "_blank";
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    window.open(`/download?${params.toString()}`, "_blank");
 
     setTimeout(() => {
       setDownloading(false);
-    }, 5000);
+    }, 1000);
   }, [videoInfo, url, format, quality]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
