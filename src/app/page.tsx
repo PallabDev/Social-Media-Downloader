@@ -94,7 +94,6 @@ export default function Home() {
     if (!videoInfo || !url.trim()) return;
 
     setDownloading(true);
-    setDownloadProgress(0);
 
     const params = new URLSearchParams({
       url: url.trim(),
@@ -104,17 +103,17 @@ export default function Home() {
       params.set("quality", quality);
     }
 
-    const a = document.createElement("a");
-    a.href = `/api/download?${params.toString()}`;
-    a.download = "";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const link = document.createElement("a");
+    link.href = `/api/download?${params.toString()}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
     setTimeout(() => {
       setDownloading(false);
-      setDownloadProgress(0);
-    }, 3000);
+    }, 5000);
   }, [videoInfo, url, format, quality]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
