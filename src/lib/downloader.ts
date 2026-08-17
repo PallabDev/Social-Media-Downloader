@@ -7,10 +7,11 @@ const BASE_ARGS = [
   "--no-warnings",
   "--no-playlist",
   "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
 ];
 
 const YOUTUBE_FALLBACK_ARGS = [
-  "--extractor-args", "youtube:player_client=web,mweb,android",
+  "--extractor-args", "youtube:player_client=web,mweb",
 ];
 
 function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown" {
