@@ -1,6 +1,9 @@
 import { type NextRequest } from "next/server";
 import { spawn } from "child_process";
 import { Readable } from "stream";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 
 export const dynamic = "force-dynamic";
 
@@ -21,41 +24,35 @@ function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "ti
   return "unknown";
 }
 
-function buildArgs(url: string, format: "mp4" | "mp3", quality: string): string[] {
-  if (format === "mp3") {
-    return [
-      ...BASE_ARGS,
-      "-x",
-      "--audio-format", "mp3",
-      "--audio-quality", "256K",
-      "-o", "-",
-      url,
-    ];
-  }
+function runYtdlp(args: string[]): Promise<{ success: boolean; outputPath?: string; error?: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
 
-  const formatMap: Record<string, string> = {
-    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-    "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-    "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/best",
-  };
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
-  const platform = detectPlatform(url);
-  let fmtStr = formatMap[quality] || formatMap["720p"];
-  if (platform === "instagram" || platform === "facebook") {
-    fmtStr = "best[ext=mp4]/best";
-  }
+    child.on("close", (code) => {
+      if (code === 0) {
+        const outputDir = args[args.indexOf("-o") + 1];
+        const parentDir = join(outputDir, "..");
+        try {
+          const files = readdirSync(parentDir);
+          const match = files.find((f) => f.includes(outputDir.split("/").pop() || ""));
+          resolve({ success: true, outputPath: join(parentDir, match || "") });
+        } catch {
+          resolve({ success: false, error: stderr || "Output not found" });
+        }
+      } else {
+        resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
+      }
+    });
 
-  return [
-    ...BASE_ARGS,
-    "-f", fmtStr,
-    "--merge-output-format", "mp4",
-    "-o", "-",
-    url,
-  ];
-}
-
-function getContentType(format: string): string {
-  return format === "mp3" ? "audio/mpeg" : "video/mp4";
+    child.on("error", (err) => {
+      resolve({ success: false, error: err.message });
+    });
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -75,7 +72,63 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: "Invalid quality" }, { status: 400 });
   }
 
-  const args = buildArgs(url.trim(), format as "mp4" | "mp3", quality);
+  const fileName = `download.${format === "mp3" ? "mp3" : "mp4"}`;
+  const contentType = format === "mp3" ? "audio/mpeg" : "video/mp4";
+
+  if (format === "mp3") {
+    const tmpDir = mkdtempSync(join(tmpdir(), "sdl-"));
+    const outputTemplate = join(tmpDir, "audio");
+
+    const args = [
+      ...BASE_ARGS,
+      "-f", "bestaudio/best",
+      "-x",
+      "--audio-format", "mp3",
+      "--audio-quality", "256K",
+      "-o", outputTemplate,
+      url.trim(),
+    ];
+
+    const result = await runYtdlp(args);
+
+    if (!result.success || !result.outputPath) {
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      return Response.json({ error: result.error || "Download failed" }, { status: 500 });
+    }
+
+    const fileBuffer = readFileSync(result.outputPath);
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+    return new Response(fileBuffer, {
+      status: 200,
+      headers: {
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+        "Content-Type": contentType,
+        "Content-Length": fileBuffer.length.toString(),
+      },
+    });
+  }
+
+  const formatMap: Record<string, string> = {
+    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+    "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+    "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/best",
+  };
+
+  const platform = detectPlatform(url.trim());
+  let fmtStr = formatMap[quality] || formatMap["720p"];
+  if (platform === "instagram" || platform === "facebook") {
+    fmtStr = "best[ext=mp4]/best";
+  }
+
+  const args = [
+    ...BASE_ARGS,
+    "-f", fmtStr,
+    "--merge-output-format", "mp4",
+    "-o", "-",
+    url.trim(),
+  ];
+
   const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
 
   const webStream = new ReadableStream({
@@ -99,13 +152,11 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  const fileName = `download.${format === "mp3" ? "mp3" : "mp4"}`;
-
   return new Response(webStream, {
     status: 200,
     headers: {
       "Content-Disposition": `attachment; filename="${fileName}"`,
-      "Content-Type": getContentType(format),
+      "Content-Type": contentType,
       "Transfer-Encoding": "chunked",
       "Cache-Control": "no-cache",
     },
