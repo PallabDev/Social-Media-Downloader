@@ -168,10 +168,6 @@ export default function Home() {
       <div className="max-w-2xl mx-auto px-4 py-16 relative z-10">
         {/* Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20">
-            <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-            <span className="text-xs font-medium text-indigo-400">Powered by yt-dlp + FFmpeg</span>
-          </div>
           <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-br from-white via-white to-zinc-500 bg-clip-text text-transparent">
             Social Media Downloader
           </h1>
@@ -365,12 +361,7 @@ export default function Home() {
           </Card>
         )}
 
-        {/* Footer */}
-        <div className="text-center mt-12">
-          <p className="text-xs text-zinc-600">
-            Built with Next.js &middot; yt-dlp &middot; FFmpeg
-          </p>
-        </div>
+
       </div>
     </div>
   );
