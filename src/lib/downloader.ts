@@ -146,10 +146,10 @@ export async function fetchVideoInfo(url: string) {
     let info;
     try {
       info = await runYtDlp([]);
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : "";
+    } catch (err: any) {
+      const errText = (err?.stderr || err?.message || "") as string;
       // If bot detection on YouTube, retry with fallback client
-      if (isYouTube && errMsg.includes("Sign in to confirm")) {
+      if (isYouTube && errText.includes("Sign in to confirm")) {
         info = await runYtDlp(YOUTUBE_FALLBACK_ARGS);
       } else {
         throw err;
