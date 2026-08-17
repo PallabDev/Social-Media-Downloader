@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "Invalid file name" }, { status: 400 });
     }
 
-    const filePath = path.join(DOWNLOAD_DIR, fileName);
+    const filePath = path.join(/* turbopackIgnore: true */ DOWNLOAD_DIR, fileName);
     await cleanupFile(filePath);
 
     return Response.json({ success: true });

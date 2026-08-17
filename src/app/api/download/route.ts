@@ -1,8 +1,7 @@
 import { type NextRequest } from "next/server";
 import { downloadMedia } from "@/lib/downloader";
 import { Readable } from "stream";
-import { pipeline } from "stream/promises";
-import { createWriteStream } from "fs";
+import { statSync, createReadStream } from "fs";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +28,6 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: result.error || "Download failed" }, { status: 500 });
     }
 
-    const { Readable } = await import("stream");
-    const { createReadStream } = await import("fs");
-
     const fileStream = createReadStream(result.filePath);
     const fileName = result.fileName || "download";
 
@@ -39,7 +35,6 @@ export async function POST(request: NextRequest) {
     headers.set("Content-Disposition", `attachment; filename="${fileName}"`);
     headers.set("Content-Type", format === "mp3" ? "audio/mpeg" : "video/mp4");
 
-    const { statSync } = await import("fs");
     const fileStat = statSync(result.filePath);
     headers.set("Content-Length", fileStat.size.toString());
 
