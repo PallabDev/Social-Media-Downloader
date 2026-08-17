@@ -8,6 +8,14 @@ const execFileAsync = promisify(execFile);
 
 const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR || /* turbopackIgnore: true */ path.join(process.cwd(), "downloads");
 
+const BASE_ARGS = [
+  "--no-warnings",
+  "--no-playlist",
+  "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "--referer", "https://www.youtube.com/",
+  "--extractor-args", "youtube:player_client=web",
+];
+
 if (!existsSync(/* turbopackIgnore: true */ DOWNLOAD_DIR)) {
   mkdirSync(/* turbopackIgnore: true */ DOWNLOAD_DIR, { recursive: true });
 }
@@ -37,10 +45,9 @@ export async function fetchVideoInfo(url: string) {
 
   try {
     const { stdout } = await execFileAsync("yt-dlp", [
+      ...BASE_ARGS,
       "--dump-json",
       "--no-download",
-      "--no-warnings",
-      "--no-playlist",
       url,
     ], { timeout: 30000 });
 
@@ -86,8 +93,7 @@ export async function downloadMedia(
   if (format === "mp3") {
     outputTemplate = path.join(DOWNLOAD_DIR, `${jobId}.%(ext)s`);
     args = [
-      "--no-playlist",
-      "--no-warnings",
+      ...BASE_ARGS,
       "-x",
       "--audio-format", "mp3",
       "--audio-quality", "256K",
@@ -112,8 +118,7 @@ export async function downloadMedia(
 
     outputTemplate = path.join(DOWNLOAD_DIR, `${jobId}.%(ext)s`);
     args = [
-      "--no-playlist",
-      "--no-warnings",
+      ...BASE_ARGS,
       "-f", fmtStr,
       "--merge-output-format", "mp4",
       "--embed-thumbnail",
