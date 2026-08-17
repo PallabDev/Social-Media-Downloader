@@ -13,8 +13,9 @@ RUN apk add --no-cache \
     g++ \
     make
 
-# Install yt-dlp
-RUN pip3 install --break-system-packages yt-dlp
+# Install yt-dlp via binary download (most reliable for Alpine)
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp
 
 # Verify installations
 RUN ffmpeg -version && yt-dlp --version
@@ -46,7 +47,9 @@ RUN apk add --no-cache \
     g++ \
     make
 
-RUN pip3 --break-system-packages install yt-dlp
+# Install yt-dlp via binary download
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp
 
 WORKDIR /app
 
