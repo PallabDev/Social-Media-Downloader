@@ -141,19 +141,28 @@ export async function fetchVideoInfo(url: string) {
     return JSON.parse(stdout);
   };
 
-  try {
-    // Try default first (full formats via android_vr)
-    let info;
+  const runYtDlpSafe = async (extraArgs: string[]): Promise<any> => {
     try {
-      info = await runYtDlp([]);
-    } catch (err: any) {
-      const errText = (err?.stderr || err?.message || "") as string;
-      // If bot detection on YouTube, retry with fallback client
-      if (isYouTube && errText.includes("Sign in to confirm")) {
-        info = await runYtDlp(YOUTUBE_FALLBACK_ARGS);
-      } else {
-        throw err;
+      return await runYtDlp(extraArgs);
+    } catch {
+      return null;
+    }
+  };
+
+  try {
+    let info;
+    // Try default first (full formats via android_vr)
+    info = await runYtDlpSafe([]);
+
+    if (!info) {
+      // Default failed, try YouTube fallback if applicable
+      if (isYouTube) {
+        info = await runYtDlpSafe(YOUTUBE_FALLBACK_ARGS);
       }
+    }
+
+    if (!info) {
+      throw new Error("Failed to fetch video info with all methods");
     }
 
     let thumbnail = info.thumbnail || info.thumbnails?.[info.thumbnails.length - 1]?.url || "";
