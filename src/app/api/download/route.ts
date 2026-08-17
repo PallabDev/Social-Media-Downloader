@@ -28,6 +28,18 @@ function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "ti
   return "unknown";
 }
 
+function runFfmpeg(args: string[]): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.on("close", (code) => {
+      resolve(code === 0 ? { success: true } : { success: false, error: stderr.slice(-500) });
+    });
+    child.on("error", (err) => resolve({ success: false, error: err.message }));
+  });
+}
+
 function runYtdlp(args: string[], platform: string): Promise<{ success: boolean; outputPath?: string; error?: string }> {
   return new Promise((resolve) => {
     const tryRun = (extraArgs: string[], attempt: number) => {
@@ -123,37 +135,60 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const args = [
+    const tmpDir = mkdtempSync(join(tmpdir(), "sdl-"));
+    const videoPath = join(tmpDir, "video");
+    const audioPath = join(tmpDir, "audio");
+    const mergedPath = join(tmpDir, "merged.mp4");
+
+    const videoArgs = [
       ...BASE_ARGS,
-      "-f", `${formatId}+bestaudio/best`,
+      "-f", formatId,
       "--merge-output-format", "mp4",
-      "-o", "-",
+      "-o", videoPath,
       url.trim(),
     ];
+    const videoResult = await runYtdlp(videoArgs, platform);
+    if (!videoResult.success || !videoResult.outputPath) {
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      return Response.json({ error: videoResult.error || "Video download failed" }, { status: 500 });
+    }
 
-    const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const audioArgs = [
+      ...BASE_ARGS,
+      "-f", "bestaudio/best",
+      "-x", "--audio-format", "mp4", "--audio-quality", "256K",
+      "-o", audioPath,
+      url.trim(),
+    ];
+    const audioResult = await runYtdlp(audioArgs, platform);
+    if (!audioResult.success || !audioResult.outputPath) {
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      return Response.json({ error: audioResult.error || "Audio download failed" }, { status: 500 });
+    }
 
-    const webStream = new ReadableStream({
-      start(controller) {
-        child.stdout.on("data", (chunk: Buffer) => {
-          controller.enqueue(new Uint8Array(chunk));
-        });
-        child.stdout.on("end", () => controller.close());
-        child.on("error", (err) => controller.error(err));
-        child.stderr.on("data", () => {});
-      },
-      cancel() {
-        child.kill("SIGTERM");
-      },
-    });
+    const ffmpegResult = await runFfmpeg([
+      "-y",
+      "-i", videoResult.outputPath,
+      "-i", audioResult.outputPath,
+      "-c:v", "copy",
+      "-c:a", "aac",
+      "-movflags", "+faststart",
+      mergedPath,
+    ]);
 
-    return new Response(webStream, {
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+    if (!ffmpegResult.success) {
+      return Response.json({ error: ffmpegResult.error || "Merge failed" }, { status: 500 });
+    }
+
+    const mergedBuffer = readFileSync(mergedPath);
+    return new Response(mergedBuffer, {
       status: 200,
       headers: {
         "Content-Disposition": `attachment; filename="${fileName}"`,
         "Content-Type": contentType,
-        "Transfer-Encoding": "chunked",
-        "Cache-Control": "no-cache",
+        "Content-Length": mergedBuffer.length.toString(),
       },
     });
   }

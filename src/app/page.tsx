@@ -102,7 +102,7 @@ export default function Home() {
     return num.toString();
   };
 
-  const videoFormats = videoInfo?.formats.filter((f) => f.type === "video+audio") || [];
+  const videoFormats = videoInfo?.formats.filter((f) => f.type === "video+audio" || f.type === "video") || [];
   const audioFormats = videoInfo?.formats.filter((f) => f.type === "audio") || [];
 
   return (
@@ -234,6 +234,11 @@ export default function Home() {
                           {f.label}
                         </span>
                         <span className="text-[10px] text-zinc-600 font-mono">{f.ext}</span>
+                        {f.type === "video" && (
+                          <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-medium">
+                            no audio
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-1">
                         {f.filesize && <span className="text-[11px] text-zinc-600">{f.filesize}</span>}
