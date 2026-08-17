@@ -13,49 +13,59 @@ const BASE_ARGS = [
   "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 ];
 
+const YOUTUBE_FALLBACK_ARGS = [
+  "--extractor-args", "youtube:player_client=web,mweb,android",
+];
+
 function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown" {
   const lower = url.toLowerCase();
   if (lower.includes("youtube.com") || lower.includes("youtu.be") || lower.includes("youtube.com/shorts")) return "youtube";
   if (lower.includes("instagram.com")) return "instagram";
   if (lower.includes("facebook.com") || lower.includes("fb.watch") || lower.includes("fb.com")) return "facebook";
-  if (lower.includes("tiktok.com")) return "tiktok";
+  if (lower.includes("tiktok")) return "tiktok";
   if (lower.includes("twitter.com") || lower.includes("x.com")) return "twitter";
   return "unknown";
 }
 
-function runYtdlp(args: string[]): Promise<{ success: boolean; outputPath?: string; error?: string }> {
+function runYtdlp(args: string[], platform: string): Promise<{ success: boolean; outputPath?: string; error?: string }> {
   return new Promise((resolve) => {
-    const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stderr = "";
+    const tryRun = (extraArgs: string[], attempt: number) => {
+      const child = spawn("yt-dlp", [...args, ...extraArgs], { stdio: ["ignore", "pipe", "pipe"] });
+      let stderr = "";
 
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
 
-    child.on("close", (code) => {
-      if (code === 0) {
-        const outputTemplate = args[args.indexOf("-o") + 1];
-        const outputDir = join(outputTemplate, "..");
-        try {
-          const files = readdirSync(outputDir);
-          const baseName = outputTemplate.split("/").pop() || "";
-          const match = files.find((f) => f.startsWith(baseName));
-          if (match) {
-            resolve({ success: true, outputPath: join(outputDir, match) });
-          } else {
-            resolve({ success: false, error: "Output file not found" });
+      child.on("close", (code) => {
+        if (code === 0) {
+          const outputTemplate = args[args.indexOf("-o") + 1];
+          const outputDir = join(outputTemplate, "..");
+          try {
+            const files = readdirSync(outputDir);
+            const baseName = outputTemplate.split("/").pop() || "";
+            const match = files.find((f) => f.startsWith(baseName));
+            if (match) {
+              resolve({ success: true, outputPath: join(outputDir, match) });
+            } else {
+              resolve({ success: false, error: "Output file not found" });
+            }
+          } catch {
+            resolve({ success: false, error: "Output directory error" });
           }
-        } catch {
-          resolve({ success: false, error: "Output directory error" });
+        } else if (platform === "youtube" && attempt === 0 && stderr.includes("Sign in to confirm")) {
+          tryRun(YOUTUBE_FALLBACK_ARGS, 1);
+        } else {
+          resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
         }
-      } else {
-        resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
-      }
-    });
+      });
 
-    child.on("error", (err) => {
-      resolve({ success: false, error: err.message });
-    });
+      child.on("error", (err) => {
+        resolve({ success: false, error: err.message });
+      });
+    };
+
+    tryRun([], 0);
   });
 }
 
@@ -72,12 +82,10 @@ export async function GET(request: NextRequest) {
   const platform = detectPlatform(url.trim());
   const isAudioOnly = format === "mp3";
 
-  // If a specific format_id is provided, use it directly
   if (formatId) {
     const fileName = `download.${isAudioOnly ? "mp3" : "mp4"}`;
     const contentType = isAudioOnly ? "audio/mpeg" : "video/mp4";
 
-    // Check if it's an audio format
     const isAudioFormat = formatId.startsWith("140") || formatId.startsWith("251") || formatId.startsWith("250") || formatId.startsWith("249") || formatId.includes("audio");
 
     if (isAudioFormat || isAudioOnly) {
@@ -87,14 +95,14 @@ export async function GET(request: NextRequest) {
       const args = [
         ...BASE_ARGS,
         "-f", formatId,
-        "-x" ,
+        "-x",
         "--audio-format", "mp3",
         "--audio-quality", "256K",
         "-o", outputTemplate,
         url.trim(),
       ];
 
-      const result = await runYtdlp(args);
+      const result = await runYtdlp(args, platform);
 
       if (!result.success || !result.outputPath) {
         try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -114,7 +122,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Video format - stream directly
     const args = [
       ...BASE_ARGS,
       "-f", `${formatId}+bestaudio/best`,
@@ -150,7 +157,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Fallback: use quality string
   if (isAudioOnly) {
     const tmpDir = mkdtempSync(join(tmpdir(), "sdl-"));
     const outputTemplate = join(tmpDir, "audio");
@@ -165,7 +171,7 @@ export async function GET(request: NextRequest) {
       url.trim(),
     ];
 
-    const result = await runYtdlp(args);
+    const result = await runYtdlp(args, platform);
 
     if (!result.success || !result.outputPath) {
       try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}

@@ -9,6 +9,10 @@ const BASE_ARGS = [
   "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 ];
 
+const YOUTUBE_FALLBACK_ARGS = [
+  "--extractor-args", "youtube:player_client=web,mweb,android",
+];
+
 function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown" {
   const lower = url.toLowerCase();
   if (lower.includes("youtube.com") || lower.includes("youtu.be") || lower.includes("youtube.com/shorts")) return "youtube";
@@ -124,16 +128,33 @@ function processFormats(formats: RawFormat[]): ProcessedFormat[] {
 
 export async function fetchVideoInfo(url: string) {
   const platform = detectPlatform(url);
+  const isYouTube = platform === "youtube";
 
-  try {
+  const runYtDlp = async (extraArgs: string[]) => {
     const { stdout } = await execFileAsync("yt-dlp", [
       ...BASE_ARGS,
+      ...extraArgs,
       "--dump-json",
       "--no-download",
       url,
     ], { timeout: 30000 });
+    return JSON.parse(stdout);
+  };
 
-    const info = JSON.parse(stdout);
+  try {
+    // Try default first (full formats via android_vr)
+    let info;
+    try {
+      info = await runYtDlp([]);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "";
+      // If bot detection on YouTube, retry with fallback client
+      if (isYouTube && errMsg.includes("Sign in to confirm")) {
+        info = await runYtDlp(YOUTUBE_FALLBACK_ARGS);
+      } else {
+        throw err;
+      }
+    }
 
     let thumbnail = info.thumbnail || info.thumbnails?.[info.thumbnails.length - 1]?.url || "";
     if (!thumbnail && info.thumbnails?.length > 0) {
