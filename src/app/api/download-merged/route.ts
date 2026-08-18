@@ -272,9 +272,8 @@ export async function GET(request: NextRequest) {
               mergedPath,
             ]);
 
-            try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-
             if (!ffmpegResult.success) {
+              try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
               send("error", { message: ffmpegResult.error || "Merge failed" });
               controller.close();
               return;
@@ -284,11 +283,11 @@ export async function GET(request: NextRequest) {
             send("status", { step: "merging", percent: 70 });
             const { copyFileSync } = await import("fs");
             copyFileSync(videoPath_actual, mergedPath);
-            try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
           }
 
           send("status", { step: "finalizing", percent: 95 });
           const mergedBuffer = readFileSync(mergedPath);
+          try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
           const fileId = Date.now().toString(36);
 
           try { rmSync(MERGED_DIR, { recursive: true, force: true }); } catch {}
