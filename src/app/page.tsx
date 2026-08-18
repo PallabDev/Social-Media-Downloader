@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,11 @@ interface VideoInfo {
   error?: string;
 }
 
+interface DownloadProgress {
+  step: string;
+  percent: number;
+}
+
 const platformColors: Record<Platform, string> = {
   youtube: "bg-red-500/20 text-red-400 border border-red-500/30",
   instagram: "bg-purple-500/20 text-purple-400 border border-purple-500/30",
@@ -54,12 +59,23 @@ const platformLabels: Record<Platform, string> = {
   unknown: "Unknown",
 };
 
+const stepLabels: Record<string, string> = {
+  downloading_video: "Downloading video stream",
+  downloading_audio: "Downloading audio stream",
+  downloading: "Downloading",
+  merging: "Merging video and audio",
+  finalizing: "Finalizing",
+};
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"video" | "audio">("video");
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [downloadError, setDownloadError] = useState("");
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchInfo = useCallback(async () => {
     if (!url.trim()) return;
@@ -87,10 +103,67 @@ export default function Home() {
 
   const handleDownload = useCallback((formatId: string, isAudio: boolean) => {
     if (!videoInfo || !url.trim()) return;
+
+    if (isAudio) {
+      const params = new URLSearchParams({ url: url.trim(), format_id: formatId, format: "mp3" });
+      window.open(`/download?${params.toString()}`, "_blank");
+      return;
+    }
+
+    setDownloadProgress({ step: "starting", percent: 0 });
+    setDownloadError("");
+
     const params = new URLSearchParams({ url: url.trim(), format_id: formatId });
-    if (isAudio) params.set("format", "mp3");
-    window.open(`/download?${params.toString()}`, "_blank");
+    const es = new EventSource(`/api/download-merged?${params.toString()}`);
+    eventSourceRef.current = es;
+
+    es.addEventListener("status", (e) => {
+      const data = JSON.parse(e.data);
+      setDownloadProgress({ step: data.step, percent: data.percent });
+    });
+
+    es.addEventListener("done", (e) => {
+      const data = JSON.parse(e.data);
+      es.close();
+      eventSourceRef.current = null;
+      setDownloadProgress(null);
+
+      const link = document.createElement("a");
+      link.href = data.fileUrl;
+      link.download = data.fileName || "download.mp4";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+
+    es.addEventListener("error", (e) => {
+      let message = "Download failed";
+      try {
+        const data = JSON.parse((e as MessageEvent).data);
+        message = data.message || message;
+      } catch {}
+      es.close();
+      eventSourceRef.current = null;
+      setDownloadProgress(null);
+      setDownloadError(message);
+    });
+
+    es.onerror = () => {
+      es.close();
+      eventSourceRef.current = null;
+      setDownloadProgress(null);
+      setDownloadError("Connection lost. Please try again.");
+    };
   }, [videoInfo, url]);
+
+  const closeProgress = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setDownloadProgress(null);
+    setDownloadError("");
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !loading) fetchInfo();
@@ -226,7 +299,8 @@ export default function Home() {
                   <button
                     key={f.format_id}
                     onClick={() => handleDownload(f.format_id, false)}
-                    className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left"
+                    disabled={!!downloadProgress}
+                    className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -234,11 +308,6 @@ export default function Home() {
                           {f.label}
                         </span>
                         <span className="text-[10px] text-zinc-600 font-mono">{f.ext}</span>
-                        {f.type === "video" && (
-                          <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded font-medium">
-                            no audio
-                          </span>
-                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-1">
                         {f.filesize && <span className="text-[11px] text-zinc-600">{f.filesize}</span>}
@@ -256,7 +325,8 @@ export default function Home() {
                   <button
                     key={f.format_id}
                     onClick={() => handleDownload(f.format_id, true)}
-                    className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left"
+                    disabled={!!downloadProgress}
+                    className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex-1 min-w-0">
                       <span className="text-sm font-medium text-white group-hover:text-indigo-400 transition-colors">
@@ -284,6 +354,79 @@ export default function Home() {
           </Card>
         )}
       </div>
+
+      {/* Download Progress Modal */}
+      {downloadProgress && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <Card className="glass-card w-full max-w-sm mx-4 rounded-2xl border border-white/10">
+            <CardContent className="p-6">
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-500/20 mb-3">
+                  <svg className="animate-spin h-6 w-6 text-indigo-400" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+                <h3 className="text-base font-semibold text-white">
+                  {stepLabels[downloadProgress.step] || downloadProgress.step}
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {downloadProgress.percent}% complete
+                </p>
+              </div>
+
+              <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden mb-4">
+                <div
+                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${downloadProgress.percent}%` }}
+                />
+              </div>
+
+              <div className="flex justify-between text-[11px] text-zinc-600 mb-4">
+                <span>{stepLabels[downloadProgress.step] || downloadProgress.step}</span>
+                <span>{downloadProgress.percent}%</span>
+              </div>
+
+              <Button
+                onClick={closeProgress}
+                variant="outline"
+                className="w-full h-9 bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 text-sm"
+              >
+                Cancel
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Download Error Toast */}
+      {downloadError && !downloadProgress && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <Card className="glass-card border-red-500/20 rounded-xl max-w-sm">
+            <CardContent className="p-4 flex items-start gap-3">
+              <div className="shrink-0 mt-0.5">
+                <svg className="h-4 w-4 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-red-400">{downloadError}</p>
+              </div>
+              <button
+                onClick={() => setDownloadError("")}
+                className="shrink-0 text-zinc-600 hover:text-white transition-colors"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
