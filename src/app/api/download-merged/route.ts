@@ -18,13 +18,13 @@ function getBaseArgs(): string[] {
   ];
 }
 
-const YOUTUBE_FALLBACK_ARGS = [
-  "--extractor-args", "youtube:player_client=android",
-];
+function getYoutubeFallbackArgs(): string[] {
+  return ["--extractor-args", "youtube:player_client=android"];
+}
 
-const YOUTUBE_MWEB_ARGS = [
-  "--extractor-args", "youtube:player_client=web,mweb",
-];
+function getYoutubeMwebArgs(): string[] {
+  return ["--extractor-args", "youtube:player_client=web,mweb"];
+}
 
 const MERGED_DIR = join(tmpdir(), "sdl-merged");
 
@@ -87,9 +87,9 @@ function runYtdlp(args: string[], platform: string, skipClientRetry = false): Pr
             resolve({ success: false, error: "Output directory error" });
           }
         } else if (!skipClientRetry && platform === "youtube" && attempt === 0 && isRetryableError(stderr)) {
-          tryRun(YOUTUBE_FALLBACK_ARGS, 1);
+          tryRun(getYoutubeFallbackArgs(), 1);
         } else if (!skipClientRetry && platform === "youtube" && attempt === 1 && isRetryableError(stderr)) {
-          tryRun(YOUTUBE_MWEB_ARGS, 2);
+          tryRun(getYoutubeMwebArgs(), 2);
         } else {
           resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
         }

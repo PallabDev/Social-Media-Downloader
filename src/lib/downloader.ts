@@ -18,13 +18,17 @@ function getBaseArgs(): string[] {
   ];
 }
 
-const YOUTUBE_FALLBACK_ARGS = [
-  "--extractor-args", "youtube:player_client=android",
-];
+function getYoutubeFallbackArgs(): string[] {
+  const hasCookies = existsSync(COOKIE_FILE);
+  if (hasCookies) return [];
+  return ["--extractor-args", "youtube:player_client=android"];
+}
 
-const YOUTUBE_MWEB_ARGS = [
-  "--extractor-args", "youtube:player_client=web,mweb",
-];
+function getYoutubeMwebArgs(): string[] {
+  const hasCookies = existsSync(COOKIE_FILE);
+  if (hasCookies) return [];
+  return ["--extractor-args", "youtube:player_client=web,mweb"];
+}
 
 function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown" {
   const lower = url.toLowerCase();
@@ -142,10 +146,10 @@ function processFormats(formats: RawFormat[]): ProcessedFormat[] {
 export async function fetchVideoInfo(url: string) {
   const platform = detectPlatform(url);
   const isYouTube = platform === "youtube";
+  const hasCookies = existsSync(COOKIE_FILE);
 
   const runYtDlp = async (extraArgs: string[]) => {
     const { stdout } = await execFileAsync("yt-dlp", [
-      ...getBaseArgs(),
       ...extraArgs,
       "--dump-json",
       "--no-download",
@@ -167,17 +171,17 @@ export async function fetchVideoInfo(url: string) {
 
   try {
     let info;
-    // Try default first (full formats via android_vr)
-    info = await runYtDlpSafe([]);
+    // Try with cookies or default client
+    info = await runYtDlpSafe(getBaseArgs());
 
     if (!info && isYouTube) {
-      // Default failed, try android client alone (may return DASH without bot detection)
-      info = await runYtDlpSafe(YOUTUBE_FALLBACK_ARGS);
+      // Cookies/default failed, try without cookies using android client
+      info = await runYtDlpSafe(["--no-warnings", "--no-playlist", "--extractor-args", "youtube:player_client=android"]);
     }
 
     if (!info && isYouTube) {
-      // Android also failed, try web,mweb (returns only muxed 360p)
-      info = await runYtDlpSafe(YOUTUBE_MWEB_ARGS);
+      // Try web,mweb
+      info = await runYtDlpSafe(["--no-warnings", "--no-playlist", "--extractor-args", "youtube:player_client=web,mweb"]);
     }
 
     if (!info) {
