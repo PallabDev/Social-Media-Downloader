@@ -75,7 +75,50 @@ export default function Home() {
   const [tab, setTab] = useState<"video" | "audio">("video");
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState("");
+  const [hasCookies, setHasCookies] = useState(false);
+  const [cookieCount, setCookieCount] = useState(0);
+  const [cookieUploading, setCookieUploading] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const checkCookies = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cookies");
+      const data = await res.json();
+      setHasCookies(data.hasCookies);
+      setCookieCount(data.count || 0);
+    } catch {}
+  }, []);
+
+  const uploadCookies = useCallback(async (file: File) => {
+    setCookieUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("cookies", file);
+      const res = await fetch("/api/cookies", { method: "POST", body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        setHasCookies(true);
+        setCookieCount(data.count || 0);
+      } else {
+        setError(data.error || "Failed to upload cookies");
+      }
+    } catch {
+      setError("Failed to upload cookies");
+    } finally {
+      setCookieUploading(false);
+    }
+  }, []);
+
+  const deleteCookies = useCallback(async () => {
+    try {
+      await fetch("/api/cookies", { method: "DELETE" });
+      setHasCookies(false);
+      setCookieCount(0);
+    } catch {}
+  }, []);
+
+  useState(() => { checkCookies(); });
 
   const fetchInfo = useCallback(async () => {
     if (!url.trim()) return;
@@ -223,6 +266,55 @@ export default function Home() {
                   "Fetch"
                 )}
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Cookie Upload */}
+        <Card className="glass-card mb-6 rounded-xl">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full ${hasCookies ? "bg-green-400" : "bg-zinc-600"}`} />
+                <div>
+                  <p className="text-xs font-medium text-zinc-400">
+                    {hasCookies ? `${cookieCount} YouTube cookies loaded` : "No YouTube cookies"}
+                  </p>
+                  <p className="text-[10px] text-zinc-600 mt-0.5">
+                    {hasCookies ? "High-quality formats available" : "Upload cookies.txt for HD formats"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadCookies(file);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={cookieUploading}
+                  variant="outline"
+                  className="h-8 px-3 text-xs bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                >
+                  {cookieUploading ? "Uploading..." : hasCookies ? "Update" : "Upload"}
+                </Button>
+                {hasCookies && (
+                  <Button
+                    onClick={deleteCookies}
+                    variant="outline"
+                    className="h-8 px-3 text-xs bg-white/5 border-white/10 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

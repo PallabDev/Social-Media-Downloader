@@ -1,17 +1,27 @@
 import { type NextRequest } from "next/server";
 import { spawn } from "child_process";
 import { Readable } from "stream";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
 export const dynamic = "force-dynamic";
+
+const COOKIE_FILE = join(process.cwd(), "cookies.txt");
+
+function getCookieArgs(): string[] {
+  if (existsSync(COOKIE_FILE)) {
+    return ["--cookies", COOKIE_FILE];
+  }
+  return [];
+}
 
 const BASE_ARGS = [
   "--no-warnings",
   "--no-playlist",
   "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
   "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
+  ...getCookieArgs(),
 ];
 
 const YOUTUBE_FALLBACK_ARGS = [
