@@ -76,9 +76,6 @@ export default function Home() {
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const eventSourceRef = useRef<EventSource | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  useState(() => { checkCookies(); });
 
   const fetchInfo = useCallback(async () => {
     if (!url.trim()) return;
