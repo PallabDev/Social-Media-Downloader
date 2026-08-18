@@ -44,6 +44,14 @@ function runFfmpeg(args: string[]): Promise<{ success: boolean; error?: string }
   });
 }
 
+function isBotDetected(stderr: string): boolean {
+  return stderr.includes("Sign in to confirm") ||
+    stderr.includes("HTTP Error 403") ||
+    stderr.includes("bot") ||
+    stderr.includes("Not a bot") ||
+    stderr.includes("confirm you");
+}
+
 function runYtdlp(args: string[], platform: string): Promise<{ success: boolean; outputPath?: string; error?: string }> {
   return new Promise((resolve) => {
     const tryRun = (extraArgs: string[], attempt: number) => {
@@ -70,9 +78,9 @@ function runYtdlp(args: string[], platform: string): Promise<{ success: boolean;
           } catch {
             resolve({ success: false, error: "Output directory error" });
           }
-        } else if (platform === "youtube" && attempt === 0 && stderr.includes("Sign in to confirm")) {
+        } else if (platform === "youtube" && attempt === 0 && isBotDetected(stderr)) {
           tryRun(YOUTUBE_FALLBACK_ARGS, 1);
-        } else if (platform === "youtube" && attempt === 1 && stderr.includes("Sign in to confirm")) {
+        } else if (platform === "youtube" && attempt === 1 && isBotDetected(stderr)) {
           tryRun(YOUTUBE_MWEB_ARGS, 2);
         } else {
           resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });

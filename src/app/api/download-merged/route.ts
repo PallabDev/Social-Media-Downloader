@@ -45,6 +45,14 @@ function runFfmpeg(args: string[]): Promise<{ success: boolean; error?: string }
   });
 }
 
+function isBotDetected(stderr: string): boolean {
+  return stderr.includes("Sign in to confirm") ||
+    stderr.includes("HTTP Error 403") ||
+    stderr.includes("bot") ||
+    stderr.includes("Not a bot") ||
+    stderr.includes("confirm you");
+}
+
 function runYtdlp(args: string[], platform: string): Promise<{ success: boolean; outputPath?: string; error?: string }> {
   return new Promise((resolve) => {
     const tryRun = (extraArgs: string[], attempt: number) => {
@@ -71,9 +79,9 @@ function runYtdlp(args: string[], platform: string): Promise<{ success: boolean;
           } catch {
             resolve({ success: false, error: "Output directory error" });
           }
-        } else if (platform === "youtube" && attempt === 0 && stderr.includes("Sign in to confirm")) {
+        } else if (platform === "youtube" && attempt === 0 && isBotDetected(stderr)) {
           tryRun(YOUTUBE_FALLBACK_ARGS, 1);
-        } else if (platform === "youtube" && attempt === 1 && stderr.includes("Sign in to confirm")) {
+        } else if (platform === "youtube" && attempt === 1 && isBotDetected(stderr)) {
           tryRun(YOUTUBE_MWEB_ARGS, 2);
         } else {
           resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
@@ -172,7 +180,8 @@ export async function GET(request: NextRequest) {
           const audioPath = join(tmpDir, "audio");
           const mergedPath = join(tmpDir, "merged.mp4");
 
-          const videoArgs = [
+          // Try specific format first, fallback to bestvideo+bestaudio
+          let videoArgs = [
             ...BASE_ARGS,
             "-f", formatId,
             "--merge-output-format", "mp4",
@@ -181,7 +190,20 @@ export async function GET(request: NextRequest) {
           ];
 
           send("status", { step: "downloading_video", percent: 15 });
-          const videoResult = await runYtdlp(videoArgs, platform);
+          let videoResult = await runYtdlp(videoArgs, platform);
+
+          // If specific format failed, try bestvideo
+          if (!videoResult.success) {
+            const bestVideoArgs = [
+              ...BASE_ARGS,
+              "-f", "bestvideo[ext=mp4]/bestvideo",
+              "--merge-output-format", "mp4",
+              "-o", videoPath,
+              url.trim(),
+            ];
+            videoResult = await runYtdlp(bestVideoArgs, platform);
+          }
+
           if (!videoResult.success || !videoResult.outputPath) {
             try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
             send("error", { message: videoResult.error || "Video download failed" });
@@ -192,7 +214,7 @@ export async function GET(request: NextRequest) {
           send("status", { step: "downloading_audio", percent: 40 });
           const audioArgs = [
             ...BASE_ARGS,
-            "-f", "bestaudio/best",
+            "-f", "bestaudio[ext=m4a]/bestaudio/best",
             "-x", "--audio-format", "mp4", "--audio-quality", "256K",
             "-o", audioPath,
             url.trim(),
