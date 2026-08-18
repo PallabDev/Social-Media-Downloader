@@ -144,11 +144,11 @@ export default function Home() {
     }
   }, [url]);
 
-  const handleDownload = useCallback((formatId: string, isAudio: boolean) => {
+  const handleDownload = useCallback((format: Format, isAudio: boolean) => {
     if (!videoInfo || !url.trim()) return;
 
     if (isAudio) {
-      const params = new URLSearchParams({ url: url.trim(), format_id: formatId, format: "mp3" });
+      const params = new URLSearchParams({ url: url.trim(), format: "mp3" });
       window.open(`/download?${params.toString()}`, "_blank");
       return;
     }
@@ -156,7 +156,7 @@ export default function Home() {
     setDownloadProgress({ step: "starting", percent: 0 });
     setDownloadError("");
 
-    const params = new URLSearchParams({ url: url.trim(), format_id: formatId });
+    const params = new URLSearchParams({ url: url.trim(), height: String(format.height ?? ""), format: format.ext });
     const es = new EventSource(`/api/download-merged?${params.toString()}`);
     eventSourceRef.current = es;
 
@@ -390,7 +390,7 @@ export default function Home() {
                 {tab === "video" && videoFormats.map((f) => (
                   <button
                     key={f.format_id}
-                    onClick={() => handleDownload(f.format_id, false)}
+                    onClick={() => handleDownload(f, false)}
                     disabled={!!downloadProgress}
                     className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -416,7 +416,7 @@ export default function Home() {
                 {tab === "audio" && audioFormats.map((f) => (
                   <button
                     key={f.format_id}
-                    onClick={() => handleDownload(f.format_id, true)}
+                    onClick={() => handleDownload(f, true)}
                     disabled={!!downloadProgress}
                     className="w-full flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-indigo-500/30 transition-all group text-left disabled:opacity-50 disabled:cursor-not-allowed"
                   >

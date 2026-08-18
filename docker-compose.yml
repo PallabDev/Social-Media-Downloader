@@ -7,9 +7,13 @@ services:
       - "8733:8733"
     volumes:
       - downloads:/app/downloads
+      - cookies:/tmp
+      - logs:/app/logs
     environment:
       - NODE_ENV=production
       - DOWNLOAD_DIR=/app/downloads
+      - LOG_DIR=/app/logs
+      - LOG_LEVEL=info
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -24,3 +28,5 @@ services:
 
 volumes:
   downloads:
+  cookies:
+  logs:

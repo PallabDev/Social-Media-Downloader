@@ -62,6 +62,7 @@ COPY --from=base --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=base --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 RUN mkdir -p /app/downloads && chown nextjs:nodejs /app/downloads
+RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
 
 USER nextjs
 
@@ -69,5 +70,7 @@ EXPOSE 8733
 
 ENV PORT=8733
 ENV HOSTNAME="0.0.0.0"
+ENV LOG_DIR=/app/logs
+ENV LOG_LEVEL=info
 
 CMD ["node", "server.js"]
