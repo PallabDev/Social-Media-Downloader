@@ -187,31 +187,45 @@ export async function GET(request: NextRequest) {
           const audioPath = join(tmpDir, "audio");
           const mergedPath = join(tmpDir, "merged.mp4");
 
-          // Try specific format first (no client retry - let caller handle fallback)
-          let videoArgs = [
-            ...getBaseArgs(),
-            "-f", formatId,
-            "--merge-output-format", "mp4",
-            "-o", videoPath,
-            url.trim(),
-          ];
+          // Convert format_id height to a resolution-based selector
+          // This avoids stale URL / HTTP 416 errors from pre-fetched format URLs
+          const formatHeight = (() => {
+            if (formatId === "137" || formatId === "248") return 1080;
+            if (formatId === "136" || formatId === "247") return 720;
+            if (formatId === "135" || formatId === "244") return 480;
+            if (formatId === "134" || formatId === "243") return 360;
+            if (formatId === "133" || formatId === "242") return 240;
+            if (formatId === "160" || formatId === "278") return 144;
+            if (formatId === "313" || formatId === "401") return 2160;
+            if (formatId === "271" || formatId === "400") return 1440;
+            return null;
+          })();
 
-          send("status", { step: "downloading_video", percent: 15 });
-          let videoResult = await runYtdlp(videoArgs, platform, true);
-
-          // If specific format failed, try bestvideo with full client retry
-          if (!videoResult.success) {
-            const bestVideoArgs = [
+          let videoArgs;
+          if (formatHeight) {
+            // Use resolution-based selector - yt-dlp fetches fresh URLs
+            videoArgs = [
+              ...getBaseArgs(),
+              "-f", `bestvideo[height<=${formatHeight}][ext=mp4]/bestvideo[height<=${formatHeight}]/bestvideo`,
+              "--merge-output-format", "mp4",
+              "-o", videoPath,
+              url.trim(),
+            ];
+          } else {
+            // Unknown format - use bestvideo
+            videoArgs = [
               ...getBaseArgs(),
               "-f", "bestvideo[ext=mp4]/bestvideo",
               "--merge-output-format", "mp4",
               "-o", videoPath,
               url.trim(),
             ];
-            videoResult = await runYtdlp(bestVideoArgs, platform, false);
           }
 
-          // If bestvideo also failed, try muxed format (360p with audio)
+          send("status", { step: "downloading_video", percent: 15 });
+          let videoResult = await runYtdlp(videoArgs, platform, false);
+
+          // Fallback: try muxed format 360p with audio
           if (!videoResult.success) {
             const muxedArgs = [
               ...getBaseArgs(),
@@ -289,15 +303,13 @@ export async function GET(request: NextRequest) {
         }
 
         // Muxed format or no format_id — stream directly
-        const formatMap: Record<string, string> = {
-          "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-          "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-          "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/best",
-        };
-
-        let fmtStr = formatId || formatMap["720p"];
+        let fmtStr: string;
         if (platform === "instagram" || platform === "facebook") {
           fmtStr = "best[ext=mp4]/best";
+        } else if (isAudioFormat) {
+          fmtStr = "bestaudio[ext=m4a]/bestaudio/best";
+        } else {
+          fmtStr = formatId === "18" ? "18" : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best";
         }
 
         send("status", { step: "downloading", percent: 20 });
