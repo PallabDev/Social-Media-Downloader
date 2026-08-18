@@ -24,7 +24,9 @@ export async function POST(request: NextRequest) {
 
     writeFileSync(COOKIE_FILE, text);
 
-    return Response.json({ success: true, message: "Cookies uploaded successfully" });
+    const lines = text.split("\n").filter((l) => l.trim() && !l.startsWith("#"));
+
+    return Response.json({ success: true, message: "Cookies uploaded successfully", count: lines.length });
   } catch {
     return Response.json({ error: "Failed to upload cookies" }, { status: 500 });
   }

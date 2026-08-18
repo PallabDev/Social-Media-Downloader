@@ -8,20 +8,15 @@ const execFileAsync = promisify(execFile);
 
 const COOKIE_FILE = join(tmpdir(), "cookies.txt");
 
-function getCookieArgs(): string[] {
-  if (existsSync(COOKIE_FILE)) {
-    return ["--cookies", COOKIE_FILE];
-  }
-  return [];
+function getBaseArgs(): string[] {
+  const hasCookies = existsSync(COOKIE_FILE);
+  return [
+    "--no-warnings",
+    "--no-playlist",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    ...(hasCookies ? ["--cookies", COOKIE_FILE] : ["--extractor-args", "youtube:player_client=android_vr,android,web,mweb"]),
+  ];
 }
-
-const BASE_ARGS = [
-  "--no-warnings",
-  "--no-playlist",
-  "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
-  ...getCookieArgs(),
-];
 
 const YOUTUBE_FALLBACK_ARGS = [
   "--extractor-args", "youtube:player_client=android",
@@ -150,7 +145,7 @@ export async function fetchVideoInfo(url: string) {
 
   const runYtDlp = async (extraArgs: string[]) => {
     const { stdout } = await execFileAsync("yt-dlp", [
-      ...BASE_ARGS,
+      ...getBaseArgs(),
       ...extraArgs,
       "--dump-json",
       "--no-download",

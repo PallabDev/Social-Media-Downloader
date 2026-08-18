@@ -8,20 +8,15 @@ export const dynamic = "force-dynamic";
 
 const COOKIE_FILE = join(tmpdir(), "cookies.txt");
 
-function getCookieArgs(): string[] {
-  if (existsSync(COOKIE_FILE)) {
-    return ["--cookies", COOKIE_FILE];
-  }
-  return [];
+function getBaseArgs(): string[] {
+  const hasCookies = existsSync(COOKIE_FILE);
+  return [
+    "--no-warnings",
+    "--no-playlist",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    ...(hasCookies ? ["--cookies", COOKIE_FILE] : ["--extractor-args", "youtube:player_client=android_vr,android,web,mweb"]),
+  ];
 }
-
-const BASE_ARGS = [
-  "--no-warnings",
-  "--no-playlist",
-  "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
-  ...getCookieArgs(),
-];
 
 const YOUTUBE_FALLBACK_ARGS = [
   "--extractor-args", "youtube:player_client=android",
@@ -148,7 +143,7 @@ export async function GET(request: NextRequest) {
           const outputTemplate = join(tmpDir, "output");
 
           const args = [
-            ...BASE_ARGS,
+            ...getBaseArgs(),
             "-f", formatId || "bestaudio/best",
             "-x",
             "--audio-format", "mp3",
@@ -194,7 +189,7 @@ export async function GET(request: NextRequest) {
 
           // Try specific format first (no client retry - let caller handle fallback)
           let videoArgs = [
-            ...BASE_ARGS,
+            ...getBaseArgs(),
             "-f", formatId,
             "--merge-output-format", "mp4",
             "-o", videoPath,
@@ -207,7 +202,7 @@ export async function GET(request: NextRequest) {
           // If specific format failed, try bestvideo with full client retry
           if (!videoResult.success) {
             const bestVideoArgs = [
-              ...BASE_ARGS,
+              ...getBaseArgs(),
               "-f", "bestvideo[ext=mp4]/bestvideo",
               "--merge-output-format", "mp4",
               "-o", videoPath,
@@ -219,7 +214,7 @@ export async function GET(request: NextRequest) {
           // If bestvideo also failed, try muxed format (360p with audio)
           if (!videoResult.success) {
             const muxedArgs = [
-              ...BASE_ARGS,
+              ...getBaseArgs(),
               "-f", "18/best[ext=mp4]/best",
               "--merge-output-format", "mp4",
               "-o", videoPath,
@@ -242,7 +237,7 @@ export async function GET(request: NextRequest) {
           // Try to download audio, but don't fail if it's a muxed format
           let audioResult: { success: boolean; outputPath?: string } = { success: false };
           const audioArgs = [
-            ...BASE_ARGS,
+            ...getBaseArgs(),
             "-f", "bestaudio[ext=m4a]/bestaudio/best",
             "-x", "--audio-format", "m4a", "--audio-quality", "256K",
             "-o", audioPath,
@@ -308,7 +303,7 @@ export async function GET(request: NextRequest) {
         send("status", { step: "downloading", percent: 20 });
 
         const args = [
-          ...BASE_ARGS,
+          ...getBaseArgs(),
           "-f", fmtStr,
           "--merge-output-format", "mp4",
           "-o", "-",
