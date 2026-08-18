@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
     }
 
     return Response.json(info);
-  } catch {
+  } catch (e: any) {
+    console.error("Info API error:", e?.message || e);
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }
