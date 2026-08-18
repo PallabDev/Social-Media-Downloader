@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import { mkdtempSync, readFileSync, rmSync, mkdirSync, existsSync, readdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { getBaseArgs, detectPlatform } from "@/lib/downloader";
+import { getBaseArgs, getFallbackArgs, detectPlatform } from "@/lib/downloader";
 import { createChildLogger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -118,7 +118,6 @@ export async function GET(request: NextRequest) {
     format,
     formatId,
     mediaType,
-    hasCookies: existsSync(join(tmpdir(), "cookies.txt")),
   });
 
   if (!url) {
@@ -218,15 +217,12 @@ export async function GET(request: NextRequest) {
               return;
             }
 
-            log.warn("Muxed direct download failed, trying without cookies", { url, error: result.error, formatId });
+            log.warn("Muxed direct download failed, trying fallback", { url, error: result.error, formatId });
 
-            // Try without cookies
+            // Try without cookies (with PO token)
             send("status", { step: "downloading", percent: 0 });
             const noCookieArgs = [
-              "--no-warnings", "--no-playlist",
-              "--js-runtimes", "node",
-              "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
-              "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+              ...getFallbackArgs(),
               "-f", formatId,
               "--merge-output-format", "mp4",
               "-o", outputPath,
@@ -275,7 +271,7 @@ export async function GET(request: NextRequest) {
               elapsed: Date.now() - startTime,
             });
             try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-            send("error", { message: "Download failed. Your cookies may be expired — try re-uploading fresh cookies." });
+            send("error", { message: "Download failed. Please try again." });
             controller.close();
             return;
           }
@@ -285,7 +281,7 @@ export async function GET(request: NextRequest) {
 
           log.info("Starting video download (height-based)", { url, platform, height: h, formatSelector: fmtSelector });
 
-          // Attempt 1: With cookies + height selector
+          // Attempt 1: PO token + height selector
           send("status", { step: "downloading", percent: 0 });
 
           const args = [
@@ -307,15 +303,12 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          log.warn("Primary download failed, trying without cookies", { url, error: result.error, height: h });
+          log.warn("Primary download failed, trying fallback player clients", { url, error: result.error, height: h });
 
-          // Attempt 2: Without cookies, android player_client + height selector
+          // Attempt 2: Without cookies, fallback player_client + height selector
           send("status", { step: "downloading", percent: 0 });
           const noCookieArgs = [
-            "--no-warnings", "--no-playlist",
-            "--js-runtimes", "node",
-            "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
-            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            ...getFallbackArgs(),
             "-f", fmtSelector,
             "--merge-output-format", "mp4",
             "-o", outputPath,
@@ -335,7 +328,7 @@ export async function GET(request: NextRequest) {
 
           log.warn("No-cookies download failed, trying muxed fallback", { url, error: noCookieResult.error });
 
-          // Attempt 3: With cookies, muxed fallback (format 18 or best[ext=mp4])
+          // Attempt 3: Muxed fallback (format 18 or best[ext=mp4])
           send("status", { step: "downloading", percent: 0 });
           const muxedArgs = [
             ...getBaseArgs(),
@@ -356,14 +349,11 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          // Attempt 4: Muxed without cookies
-          log.warn("Muxed fallback failed, trying muxed without cookies", { url, error: muxedResult.error });
+          // Attempt 4: Muxed fallback
+          log.warn("Muxed fallback failed, trying muxed fallback", { url, error: muxedResult.error });
           send("status", { step: "downloading", percent: 0 });
           const muxedNoCookieArgs = [
-            "--no-warnings", "--no-playlist",
-            "--js-runtimes", "node",
-            "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
-            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            ...getFallbackArgs(),
             "-f", "18/best[ext=mp4]/best",
             "--merge-output-format", "mp4",
             "-o", outputPath,
@@ -392,7 +382,7 @@ export async function GET(request: NextRequest) {
             elapsed: Date.now() - startTime,
           });
           try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-          send("error", { message: "All download methods failed. Your cookies may be expired — try re-uploading fresh cookies." });
+          send("error", { message: "All download methods failed. Please try again later." });
           controller.close();
           return;
         }

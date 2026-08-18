@@ -1,29 +1,32 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
 import { createChildLogger } from "./logger";
 
 const execFileAsync = promisify(execFile);
 
-const COOKIE_FILE = join(tmpdir(), "cookies.txt");
-
 const log = createChildLogger("downloader");
 
 export function getBaseArgs(): string[] {
-  const hasCookies = existsSync(COOKIE_FILE);
   const POT_SERVER = process.env.POT_SERVER_URL || "http://bgutil-pot:4416";
-  const extractorArgs = hasCookies
-    ? `youtubepot-bgutilhttp:base_url=${POT_SERVER}`
-    : `youtubepot-bgutilhttp:base_url=${POT_SERVER};youtube:player_client=android_vr,android,web,mweb`;
+  const extractorArgs = `youtubepot-bgutilhttp:base_url=${POT_SERVER};youtube:player_client=web`;
   return [
     "--no-warnings",
     "--no-playlist",
     "--js-runtimes", "node",
     "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "--extractor-args", extractorArgs,
-    ...(hasCookies ? ["--cookies", COOKIE_FILE] : []),
+  ];
+}
+
+export function getFallbackArgs(playerClients?: string): string[] {
+  const POT_SERVER = process.env.POT_SERVER_URL || "http://bgutil-pot:4416";
+  const clients = playerClients || "android_vr,android,web,mweb";
+  return [
+    "--no-warnings",
+    "--no-playlist",
+    "--js-runtimes", "node",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "--extractor-args", `youtubepot-bgutilhttp:base_url=${POT_SERVER};youtube:player_client=${clients}`,
   ];
 }
 
@@ -194,15 +197,13 @@ function processFormats(formats: RawFormat[]): ProcessedFormat[] {
 export async function fetchVideoInfo(url: string) {
   const platform = detectPlatform(url);
   const isYouTube = platform === "youtube";
-  const hasCookies = existsSync(COOKIE_FILE);
 
-  log.info("fetchVideoInfo started", { url, platform, hasCookies });
+  log.info("fetchVideoInfo started", { url, platform });
 
   const runYtDlp = async (extraArgs: string[], attemptLabel: string) => {
     log.info(`yt-dlp info attempt: ${attemptLabel}`, {
       url,
       args: extraArgs,
-      hasCookies,
     });
 
     const { stdout, stderr } = await execFileAsync("yt-dlp", [
@@ -258,22 +259,22 @@ export async function fetchVideoInfo(url: string) {
     let info;
 
     const baseArgs = getBaseArgs();
-    log.info("Trying base args (with cookies or player_client)", { args: baseArgs });
+    log.info("Trying base args", { args: baseArgs });
     info = await runYtDlpSafe(baseArgs, "base-args");
 
     if (!info && isYouTube) {
-      log.warn("Base args failed, trying android player_client fallback");
+      log.warn("Base args failed, trying fallback player clients");
       info = await runYtDlpSafe(
-        ["--no-warnings", "--no-playlist", "--js-runtimes", "node", "--extractor-args", "youtube:player_client=android"],
-        "android-fallback"
+        [...getFallbackArgs("android_vr,android,web,mweb"), "--dump-json", "--no-download", url],
+        "fallback-android-vr"
       );
     }
 
     if (!info && isYouTube) {
-      log.warn("Android fallback failed, trying web,mweb player_client fallback");
+      log.warn("Android fallback failed, trying web,mweb");
       info = await runYtDlpSafe(
-        ["--no-warnings", "--no-playlist", "--js-runtimes", "node", "--extractor-args", "youtube:player_client=web,mweb"],
-        "web-mweb-fallback"
+        [...getFallbackArgs("web,mweb"), "--dump-json", "--no-download", url],
+        "fallback-web-mweb"
       );
     }
 

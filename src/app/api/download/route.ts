@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { spawn } from "child_process";
 import { Readable } from "stream";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, existsSync } from "fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { createChildLogger } from "@/lib/logger";
@@ -10,8 +10,6 @@ import { getBaseArgs } from "@/lib/downloader";
 export const dynamic = "force-dynamic";
 
 const log = createChildLogger("api:download");
-
-const COOKIE_FILE = join(tmpdir(), "cookies.txt");
 
 function getYoutubeFallbackArgs(): string[] {
   return ["--js-runtimes", "node", "--extractor-args", "youtube:player_client=android"];
@@ -119,7 +117,6 @@ export async function GET(request: NextRequest) {
     formatId,
     format,
     quality,
-    hasCookies: existsSync(COOKIE_FILE),
   });
 
   if (!url) {
