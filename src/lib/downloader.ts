@@ -149,16 +149,29 @@ export async function fetchVideoInfo(url: string) {
   const hasCookies = existsSync(COOKIE_FILE);
 
   const runYtDlp = async (extraArgs: string[]) => {
-    const { stdout } = await execFileAsync("yt-dlp", [
+    const { stdout, stderr } = await execFileAsync("yt-dlp", [
       ...extraArgs,
       "--dump-json",
       "--no-download",
       url,
     ], { timeout: 30000 });
-    if (!stdout || stdout.trim().length === 0) {
-      throw new Error("Empty response from yt-dlp");
+    const output = (stdout || "").trim();
+    const errOutput = (stderr || "").trim();
+    if (output.length === 0) {
+      throw new Error(`Empty response from yt-dlp: ${errOutput || "unknown"}`);
     }
-    return JSON.parse(stdout);
+    try {
+      return JSON.parse(output);
+    } catch {
+      const lines = output.split("\n");
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line.trim());
+          if (parsed?.id) return parsed;
+        } catch { continue; }
+      }
+      throw new Error(`Failed to parse yt-dlp JSON (first 200 chars): ${output.slice(0, 200)}`);
+    }
   };
 
   const runYtDlpSafe = async (extraArgs: string[]): Promise<any> => {
