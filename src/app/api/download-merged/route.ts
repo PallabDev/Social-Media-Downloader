@@ -55,7 +55,7 @@ function isRetryableError(stderr: string): boolean {
     stderr.includes("format not available");
 }
 
-function runYtdlp(args: string[], platform: string): Promise<{ success: boolean; outputPath?: string; error?: string }> {
+function runYtdlp(args: string[], platform: string, skipClientRetry = false): Promise<{ success: boolean; outputPath?: string; error?: string }> {
   return new Promise((resolve) => {
     const tryRun = (extraArgs: string[], attempt: number) => {
       const child = spawn("yt-dlp", [...args, ...extraArgs], { stdio: ["ignore", "pipe", "pipe"] });
@@ -81,9 +81,9 @@ function runYtdlp(args: string[], platform: string): Promise<{ success: boolean;
           } catch {
             resolve({ success: false, error: "Output directory error" });
           }
-        } else if (platform === "youtube" && attempt === 0 && isRetryableError(stderr)) {
+        } else if (!skipClientRetry && platform === "youtube" && attempt === 0 && isRetryableError(stderr)) {
           tryRun(YOUTUBE_FALLBACK_ARGS, 1);
-        } else if (platform === "youtube" && attempt === 1 && isRetryableError(stderr)) {
+        } else if (!skipClientRetry && platform === "youtube" && attempt === 1 && isRetryableError(stderr)) {
           tryRun(YOUTUBE_MWEB_ARGS, 2);
         } else {
           resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
           const audioPath = join(tmpDir, "audio");
           const mergedPath = join(tmpDir, "merged.mp4");
 
-          // Try specific format first, fallback to bestvideo+bestaudio
+          // Try specific format first (no client retry - let caller handle fallback)
           let videoArgs = [
             ...BASE_ARGS,
             "-f", formatId,
@@ -192,9 +192,9 @@ export async function GET(request: NextRequest) {
           ];
 
           send("status", { step: "downloading_video", percent: 15 });
-          let videoResult = await runYtdlp(videoArgs, platform);
+          let videoResult = await runYtdlp(videoArgs, platform, true);
 
-          // If specific format failed, try bestvideo
+          // If specific format failed, try bestvideo with full client retry
           if (!videoResult.success) {
             const bestVideoArgs = [
               ...BASE_ARGS,
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
               "-o", videoPath,
               url.trim(),
             ];
-            videoResult = await runYtdlp(bestVideoArgs, platform);
+            videoResult = await runYtdlp(bestVideoArgs, platform, false);
           }
 
           if (!videoResult.success || !videoResult.outputPath) {

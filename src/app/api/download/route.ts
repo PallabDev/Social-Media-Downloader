@@ -54,7 +54,7 @@ function isRetryableError(stderr: string): boolean {
     stderr.includes("format not available");
 }
 
-function runYtdlp(args: string[], platform: string): Promise<{ success: boolean; outputPath?: string; error?: string }> {
+function runYtdlp(args: string[], platform: string, skipClientRetry = false): Promise<{ success: boolean; outputPath?: string; error?: string }> {
   return new Promise((resolve) => {
     const tryRun = (extraArgs: string[], attempt: number) => {
       const child = spawn("yt-dlp", [...args, ...extraArgs], { stdio: ["ignore", "pipe", "pipe"] });
@@ -80,9 +80,9 @@ function runYtdlp(args: string[], platform: string): Promise<{ success: boolean;
           } catch {
             resolve({ success: false, error: "Output directory error" });
           }
-        } else if (platform === "youtube" && attempt === 0 && isRetryableError(stderr)) {
+        } else if (!skipClientRetry && platform === "youtube" && attempt === 0 && isRetryableError(stderr)) {
           tryRun(YOUTUBE_FALLBACK_ARGS, 1);
-        } else if (platform === "youtube" && attempt === 1 && isRetryableError(stderr)) {
+        } else if (!skipClientRetry && platform === "youtube" && attempt === 1 && isRetryableError(stderr)) {
           tryRun(YOUTUBE_MWEB_ARGS, 2);
         } else {
           resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
@@ -156,14 +156,24 @@ export async function GET(request: NextRequest) {
     const audioPath = join(tmpDir, "audio");
     const mergedPath = join(tmpDir, "merged.mp4");
 
-    const videoArgs = [
+    let videoResult = await runYtdlp([
       ...BASE_ARGS,
       "-f", formatId,
       "--merge-output-format", "mp4",
       "-o", videoPath,
       url.trim(),
-    ];
-    const videoResult = await runYtdlp(videoArgs, platform);
+    ], platform, true);
+
+    if (!videoResult.success) {
+      videoResult = await runYtdlp([
+        ...BASE_ARGS,
+        "-f", "bestvideo[ext=mp4]/bestvideo",
+        "--merge-output-format", "mp4",
+        "-o", videoPath,
+        url.trim(),
+      ], platform, false);
+    }
+
     if (!videoResult.success || !videoResult.outputPath) {
       try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
       return Response.json({ error: videoResult.error || "Video download failed" }, { status: 500 });
