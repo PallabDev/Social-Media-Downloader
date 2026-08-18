@@ -11,11 +11,11 @@ const BASE_ARGS = [
 ];
 
 const YOUTUBE_FALLBACK_ARGS = [
-  "--extractor-args", "youtube:player_client=android",
+  "--extractor-args", "youtube:player_client=ios",
 ];
 
 const YOUTUBE_MWEB_ARGS = [
-  "--extractor-args", "youtube:player_client=web,mweb",
+  "--extractor-args", "youtube:player_client=tv_embedded",
 ];
 
 function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown" {
