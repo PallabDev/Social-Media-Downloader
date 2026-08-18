@@ -68,9 +68,8 @@ RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
 # Clone bgutil PO Token server and build it
 RUN git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil \
     && cd /opt/bgutil/server \
-    && npm ci --ignore-scripts \
-    && npm install typescript \
-    && npx tsc \
+    && npm install --ignore-optional \
+    && ./node_modules/.bin/tsc \
     && chown -R nextjs:nodejs /opt/bgutil
 
 USER nextjs
