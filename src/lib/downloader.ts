@@ -13,8 +13,7 @@ function getBaseArgs(): string[] {
   return [
     "--no-warnings",
     "--no-playlist",
-    "--impersonate", "chrome",
-    "--js-runtimes", "nodejs",
+    "--js-runtimes", "node",
     "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     ...(hasCookies ? ["--cookies", COOKIE_FILE] : ["--extractor-args", "youtube:player_client=android_vr,android,web,mweb"]),
   ];
@@ -191,12 +190,12 @@ export async function fetchVideoInfo(url: string) {
 
     if (!info && isYouTube) {
       // Cookies/default failed, try without cookies using android client
-      info = await runYtDlpSafe(["--no-warnings", "--no-playlist", "--js-runtimes", "nodejs", "--extractor-args", "youtube:player_client=android"]);
+      info = await runYtDlpSafe(["--no-warnings", "--no-playlist", "--js-runtimes", "node", "--extractor-args", "youtube:player_client=android"]);
     }
 
     if (!info && isYouTube) {
       // Try web,mweb
-      info = await runYtDlpSafe(["--no-warnings", "--no-playlist", "--js-runtimes", "nodejs", "--extractor-args", "youtube:player_client=web,mweb"]);
+      info = await runYtDlpSafe(["--no-warnings", "--no-playlist", "--js-runtimes", "node", "--extractor-args", "youtube:player_client=web,mweb"]);
     }
 
     if (!info) {

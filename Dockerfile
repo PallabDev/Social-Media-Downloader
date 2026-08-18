@@ -14,7 +14,7 @@ RUN apk add --no-cache \
     make
 
 # Install yt-dlp + curl_cffi via pip (for --impersonate support)
-RUN pip3 install --break-system-packages yt-dlp curl_cffi
+RUN pip3 install --break-system-packages 'yt-dlp' 'curl_cffi<0.7'
 
 # Verify installations
 RUN ffmpeg -version && yt-dlp --version
@@ -47,7 +47,7 @@ RUN apk add --no-cache \
     make
 
 # Install yt-dlp + curl_cffi via pip
-RUN pip3 install --break-system-packages yt-dlp curl_cffi
+RUN pip3 install --break-system-packages 'yt-dlp' 'curl_cffi<0.7'
 
 WORKDIR /app
 
