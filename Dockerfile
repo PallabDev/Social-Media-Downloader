@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 # Install ffmpeg and yt-dlp dependencies
 RUN apk add --no-cache \
@@ -13,11 +13,11 @@ RUN apk add --no-cache \
     g++ \
     make
 
-# Install yt-dlp + curl_cffi + bgutil PO Token provider plugin
-RUN pip3 install --break-system-packages 'yt-dlp' 'curl_cffi<0.7' 'bgutil-ytdlp-pot-provider'
+# Install yt-dlp with default extras (includes yt-dlp-ejs) + curl_cffi + bgutil PO Token provider
+RUN pip3 install --break-system-packages 'yt-dlp[default]' 'curl_cffi<0.7' 'bgutil-ytdlp-pot-provider'
 
 # Verify installations
-RUN ffmpeg -version && yt-dlp --version
+RUN ffmpeg -version && yt-dlp --version && node --version
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 RUN apk add --no-cache \
     python3 \
@@ -46,8 +46,8 @@ RUN apk add --no-cache \
     g++ \
     make
 
-# Install yt-dlp + curl_cffi + bgutil PO Token provider plugin
-RUN pip3 install --break-system-packages 'yt-dlp' 'curl_cffi<0.7' 'bgutil-ytdlp-pot-provider'
+# Install yt-dlp with default extras (includes yt-dlp-ejs) + curl_cffi + bgutil PO Token provider
+RUN pip3 install --break-system-packages 'yt-dlp[default]' 'curl_cffi<0.7' 'bgutil-ytdlp-pot-provider'
 
 WORKDIR /app
 
