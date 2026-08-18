@@ -11,6 +11,10 @@ const BASE_ARGS = [
 ];
 
 const YOUTUBE_FALLBACK_ARGS = [
+  "--extractor-args", "youtube:player_client=android",
+];
+
+const YOUTUBE_MWEB_ARGS = [
   "--extractor-args", "youtube:player_client=web,mweb",
 ];
 
@@ -158,11 +162,14 @@ export async function fetchVideoInfo(url: string) {
     // Try default first (full formats via android_vr)
     info = await runYtDlpSafe([]);
 
-    if (!info) {
-      // Default failed, try YouTube fallback if applicable
-      if (isYouTube) {
-        info = await runYtDlpSafe(YOUTUBE_FALLBACK_ARGS);
-      }
+    if (!info && isYouTube) {
+      // Default failed, try android client alone (may return DASH without bot detection)
+      info = await runYtDlpSafe(YOUTUBE_FALLBACK_ARGS);
+    }
+
+    if (!info && isYouTube) {
+      // Android also failed, try web,mweb (returns only muxed 360p)
+      info = await runYtDlpSafe(YOUTUBE_MWEB_ARGS);
     }
 
     if (!info) {

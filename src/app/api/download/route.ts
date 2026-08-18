@@ -15,6 +15,10 @@ const BASE_ARGS = [
 ];
 
 const YOUTUBE_FALLBACK_ARGS = [
+  "--extractor-args", "youtube:player_client=android",
+];
+
+const YOUTUBE_MWEB_ARGS = [
   "--extractor-args", "youtube:player_client=web,mweb",
 ];
 
@@ -68,6 +72,8 @@ function runYtdlp(args: string[], platform: string): Promise<{ success: boolean;
           }
         } else if (platform === "youtube" && attempt === 0 && stderr.includes("Sign in to confirm")) {
           tryRun(YOUTUBE_FALLBACK_ARGS, 1);
+        } else if (platform === "youtube" && attempt === 1 && stderr.includes("Sign in to confirm")) {
+          tryRun(YOUTUBE_MWEB_ARGS, 2);
         } else {
           resolve({ success: false, error: stderr || `yt-dlp exited with code ${code}` });
         }
