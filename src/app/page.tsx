@@ -156,7 +156,13 @@ export default function Home() {
     setDownloadProgress({ step: "starting", percent: 0 });
     setDownloadError("");
 
-    const params = new URLSearchParams({ url: url.trim(), height: String(format.height ?? ""), format: format.ext });
+    const params = new URLSearchParams({
+      url: url.trim(),
+      height: String(format.height ?? ""),
+      format: format.ext,
+      format_id: format.format_id,
+      type: format.type,
+    });
     const es = new EventSource(`/api/download-merged?${params.toString()}`);
     eventSourceRef.current = es;
 

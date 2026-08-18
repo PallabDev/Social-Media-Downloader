@@ -75,37 +75,91 @@ const TARGET_HEIGHTS = [1080, 720, 480];
 function processFormats(formats: RawFormat[]): ProcessedFormat[] {
   const result: ProcessedFormat[] = [];
 
-  for (const height of TARGET_HEIGHTS) {
-    const candidates = formats.filter(
-      (f) => f.height === height && f.vcodec !== "none" && f.acodec === "none" && (f.ext === "mp4" || f.ext === "webm")
-    );
+  const hasDASH = formats.some((f) => f.height && f.vcodec !== "none" && f.acodec === "none");
+  const hasMuxed = formats.some((f) => f.height && f.vcodec !== "none" && f.acodec !== "none");
 
-    const bestMp4 = candidates.filter((f) => f.ext === "mp4").sort((a, b) => (b.tbr || 0) - (a.tbr || 0))[0];
-    const bestWebm = candidates.filter((f) => f.ext === "webm").sort((a, b) => (b.tbr || 0) - (a.tbr || 0))[0];
+  log.info("processFormats analysis", {
+    totalFormats: formats.length,
+    hasDASH,
+    hasMuxed,
+    availableHeights: [...new Set(formats.filter((f) => f.height).map((f) => f.height))].sort((a, b) => (b || 0) - (a || 0)),
+  });
 
-    if (bestMp4) {
-      result.push({
-        format_id: bestMp4.format_id,
-        label: `${height}p`,
-        ext: "mp4",
-        type: "video",
-        height,
-        fps: bestMp4.fps,
-        filesize: formatSize(bestMp4.filesize),
-        bitrate: formatBitrate(bestMp4.tbr),
-      });
+  if (hasDASH) {
+    for (const height of TARGET_HEIGHTS) {
+      const candidates = formats.filter(
+        (f) => f.height === height && f.vcodec !== "none" && f.acodec === "none" && (f.ext === "mp4" || f.ext === "webm")
+      );
+
+      const bestMp4 = candidates.filter((f) => f.ext === "mp4").sort((a, b) => (b.tbr || 0) - (a.tbr || 0))[0];
+      const bestWebm = candidates.filter((f) => f.ext === "webm").sort((a, b) => (b.tbr || 0) - (a.tbr || 0))[0];
+
+      if (bestMp4) {
+        result.push({
+          format_id: bestMp4.format_id,
+          label: `${height}p`,
+          ext: "mp4",
+          type: "video",
+          height,
+          fps: bestMp4.fps,
+          filesize: formatSize(bestMp4.filesize),
+          bitrate: formatBitrate(bestMp4.tbr),
+        });
+      }
+
+      if (bestWebm) {
+        result.push({
+          format_id: bestWebm.format_id,
+          label: `${height}p`,
+          ext: "webm",
+          type: "video",
+          height,
+          fps: bestWebm.fps,
+          filesize: formatSize(bestWebm.filesize),
+          bitrate: formatBitrate(bestWebm.tbr),
+        });
+      }
     }
+  }
 
-    if (bestWebm) {
+  if (hasMuxed && result.length === 0) {
+    for (const height of TARGET_HEIGHTS) {
+      const candidates = formats.filter(
+        (f) => f.height === height && f.vcodec !== "none" && f.acodec !== "none" && (f.ext === "mp4" || f.ext === "webm")
+      );
+
+      const bestMp4 = candidates.filter((f) => f.ext === "mp4").sort((a, b) => (b.tbr || 0) - (a.tbr || 0))[0];
+
+      if (bestMp4) {
+        result.push({
+          format_id: bestMp4.format_id,
+          label: `${height}p`,
+          ext: "mp4",
+          type: "video+audio",
+          height,
+          fps: bestMp4.fps,
+          filesize: formatSize(bestMp4.filesize),
+          bitrate: formatBitrate(bestMp4.tbr),
+        });
+      }
+    }
+  }
+
+  if (result.length === 0 && hasMuxed) {
+    const bestMuxed = formats
+      .filter((f) => f.vcodec !== "none" && f.acodec !== "none" && f.ext === "mp4")
+      .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+
+    if (bestMuxed) {
       result.push({
-        format_id: bestWebm.format_id,
-        label: `${height}p`,
-        ext: "webm",
-        type: "video",
-        height,
-        fps: bestWebm.fps,
-        filesize: formatSize(bestWebm.filesize),
-        bitrate: formatBitrate(bestWebm.tbr),
+        format_id: bestMuxed.format_id,
+        label: `${bestMuxed.height || "?"}p`,
+        ext: "mp4",
+        type: "video+audio",
+        height: bestMuxed.height,
+        fps: bestMuxed.fps,
+        filesize: formatSize(bestMuxed.filesize),
+        bitrate: formatBitrate(bestMuxed.tbr),
       });
     }
   }
@@ -126,6 +180,8 @@ function processFormats(formats: RawFormat[]): ProcessedFormat[] {
       bitrate: formatBitrate(bestAudio.tbr),
     });
   }
+
+  log.info("processFormats result", { resultCount: result.length, formats: result.map((f) => `${f.label} ${f.ext} ${f.type}`) });
 
   return result;
 }
