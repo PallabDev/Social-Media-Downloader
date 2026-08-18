@@ -69,6 +69,7 @@ RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
 RUN git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil \
     && cd /opt/bgutil/server \
     && npm ci --ignore-scripts \
+    && npm install typescript \
     && npx tsc \
     && chown -R nextjs:nodejs /opt/bgutil
 
