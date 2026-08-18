@@ -14,17 +14,19 @@ function getBaseArgs(): string[] {
   return [
     "--no-warnings",
     "--no-playlist",
+    "--impersonate", "chrome",
+    "--js-runtimes", "nodejs",
     "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     ...(hasCookies ? ["--cookies", COOKIE_FILE] : ["--extractor-args", "youtube:player_client=android_vr,android,web,mweb"]),
   ];
 }
 
 function getYoutubeFallbackArgs(): string[] {
-  return ["--extractor-args", "youtube:player_client=android"];
+  return ["--js-runtimes", "nodejs", "--extractor-args", "youtube:player_client=android"];
 }
 
 function getYoutubeMwebArgs(): string[] {
-  return ["--extractor-args", "youtube:player_client=web,mweb"];
+  return ["--js-runtimes", "nodejs", "--extractor-args", "youtube:player_client=web,mweb"];
 }
 
 function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown" {
