@@ -4,11 +4,6 @@ services:
     ports:
       - "4416:4416"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4416"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   social-dl:
     build:
@@ -17,8 +12,7 @@ services:
     ports:
       - "8733:8733"
     depends_on:
-      bgutil-pot:
-        condition: service_healthy
+      - bgutil-pot
     volumes:
       - downloads:/app/downloads
       - cookies:/tmp
