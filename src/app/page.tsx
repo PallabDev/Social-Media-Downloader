@@ -165,6 +165,13 @@ export default function Home() {
       setDownloadProgress({ step: data.step, percent: data.percent });
     });
 
+    es.addEventListener("warning", (e) => {
+      const data = JSON.parse(e.data);
+      if (data.message) {
+        setDownloadError(data.message);
+      }
+    });
+
     es.addEventListener("done", (e) => {
       const data = JSON.parse(e.data);
       es.close();

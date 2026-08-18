@@ -192,6 +192,7 @@ export async function GET(request: NextRequest) {
 
           log.info("Starting video download (height-based)", { url, platform, height: h, formatSelector: fmtSelector });
 
+          // Attempt 1: With cookies + height selector
           send("status", { step: "downloading", percent: 0 });
 
           const args = [
@@ -208,42 +209,98 @@ export async function GET(request: NextRequest) {
             { url, platform, height: h, attempt: "primary" }
           );
 
-          if (!result.success || !result.outputPath) {
-            log.warn("Height-based download failed, trying fallback", { url, error: result.error, height: h });
-
-            send("status", { step: "downloading", percent: 0 });
-            const fallbackArgs = [
-              ...getBaseArgs(),
-              "-f", "best[ext=mp4]/best",
-              "--merge-output-format", "mp4",
-              "-o", outputPath,
-              url.trim(),
-            ];
-
-            const fallbackResult = await runYtdlpWithProgress(
-              fallbackArgs,
-              (p) => send("status", { step: "downloading", percent: Math.min(p, 85) }),
-              { url, platform, height: h, attempt: "fallback" }
-            );
-
-            if (!fallbackResult.success || !fallbackResult.outputPath) {
-              log.error("Both download attempts failed", {
-                url,
-                primaryError: result.error,
-                fallbackError: fallbackResult.error,
-                elapsed: Date.now() - startTime,
-              });
-              try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-              send("error", { message: result.error || fallbackResult.error || "Download failed" });
-              controller.close();
-              return;
-            }
-
-            await handleH264Conversion(fallbackResult.outputPath, tmpDir, send, controller, MERGED_DIR, url, startTime);
+          if (result.success && result.outputPath) {
+            await handleH264Conversion(result.outputPath, tmpDir, send, controller, MERGED_DIR, url, startTime);
             return;
           }
 
-          await handleH264Conversion(result.outputPath, tmpDir, send, controller, MERGED_DIR, url, startTime);
+          log.warn("Primary download failed, trying without cookies", { url, error: result.error, height: h });
+
+          // Attempt 2: Without cookies, android player_client + height selector
+          send("status", { step: "downloading", percent: 0 });
+          const noCookieArgs = [
+            "--no-warnings", "--no-playlist",
+            "--js-runtimes", "node",
+            "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "-f", fmtSelector,
+            "--merge-output-format", "mp4",
+            "-o", outputPath,
+            url.trim(),
+          ];
+
+          const noCookieResult = await runYtdlpWithProgress(
+            noCookieArgs,
+            (p) => send("status", { step: "downloading", percent: Math.min(p, 85) }),
+            { url, platform, height: h, attempt: "no-cookies" }
+          );
+
+          if (noCookieResult.success && noCookieResult.outputPath) {
+            await handleH264Conversion(noCookieResult.outputPath, tmpDir, send, controller, MERGED_DIR, url, startTime);
+            return;
+          }
+
+          log.warn("No-cookies download failed, trying muxed fallback", { url, error: noCookieResult.error });
+
+          // Attempt 3: With cookies, muxed fallback (format 18 or best[ext=mp4])
+          send("status", { step: "downloading", percent: 0 });
+          const muxedArgs = [
+            ...getBaseArgs(),
+            "-f", "best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "-o", outputPath,
+            url.trim(),
+          ];
+
+          const muxedResult = await runYtdlpWithProgress(
+            muxedArgs,
+            (p) => send("status", { step: "downloading", percent: Math.min(p, 85) }),
+            { url, platform, height: h, attempt: "muxed-fallback" }
+          );
+
+          if (muxedResult.success && muxedResult.outputPath) {
+            await handleH264Conversion(muxedResult.outputPath, tmpDir, send, controller, MERGED_DIR, url, startTime);
+            return;
+          }
+
+          // Attempt 4: Muxed without cookies
+          log.warn("Muxed fallback failed, trying muxed without cookies", { url, error: muxedResult.error });
+          send("status", { step: "downloading", percent: 0 });
+          const muxedNoCookieArgs = [
+            "--no-warnings", "--no-playlist",
+            "--js-runtimes", "node",
+            "--extractor-args", "youtube:player_client=android_vr,android,web,mweb",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "-f", "18/best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "-o", outputPath,
+            url.trim(),
+          ];
+
+          const muxedNoCookieResult = await runYtdlpWithProgress(
+            muxedNoCookieArgs,
+            (p) => send("status", { step: "downloading", percent: Math.min(p, 85) }),
+            { url, platform, height: h, attempt: "muxed-no-cookies" }
+          );
+
+          if (muxedNoCookieResult.success && muxedNoCookieResult.outputPath) {
+            log.info("Muxed no-cookies succeeded (360p fallback)", { url, height: h });
+            send("status", { step: "warning", percent: 0, message: "Requested resolution not available. Downloading 360p instead." });
+            await handleH264Conversion(muxedNoCookieResult.outputPath, tmpDir, send, controller, MERGED_DIR, url, startTime);
+            return;
+          }
+
+          log.error("All download attempts failed", {
+            url,
+            primaryError: result.error,
+            noCookieError: noCookieResult.error,
+            muxedError: muxedResult.error,
+            muxedNoCookieError: muxedNoCookieResult.error,
+            elapsed: Date.now() - startTime,
+          });
+          try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+          send("error", { message: "All download methods failed. Your cookies may be expired — try re-uploading fresh cookies." });
+          controller.close();
           return;
         }
 
