@@ -187,43 +187,30 @@ export async function GET(request: NextRequest) {
           const audioPath = join(tmpDir, "audio");
           const mergedPath = join(tmpDir, "merged.mp4");
 
-          // Convert format_id height to a resolution-based selector
-          // This avoids stale URL / HTTP 416 errors from pre-fetched format URLs
-          const formatHeight = (() => {
-            if (formatId === "137" || formatId === "248") return 1080;
-            if (formatId === "136" || formatId === "247") return 720;
-            if (formatId === "135" || formatId === "244") return 480;
-            if (formatId === "134" || formatId === "243") return 360;
-            if (formatId === "133" || formatId === "242") return 240;
-            if (formatId === "160" || formatId === "278") return 144;
-            if (formatId === "313" || formatId === "401") return 2160;
-            if (formatId === "271" || formatId === "400") return 1440;
-            return null;
-          })();
-
-          let videoArgs;
-          if (formatHeight) {
-            // Use resolution-based selector - yt-dlp fetches fresh URLs
-            videoArgs = [
-              ...getBaseArgs(),
-              "-f", `bestvideo[height<=${formatHeight}][ext=mp4]/bestvideo[height<=${formatHeight}]/bestvideo`,
-              "--merge-output-format", "mp4",
-              "-o", videoPath,
-              url.trim(),
-            ];
-          } else {
-            // Unknown format - use bestvideo
-            videoArgs = [
-              ...getBaseArgs(),
-              "-f", "bestvideo[ext=mp4]/bestvideo",
-              "--merge-output-format", "mp4",
-              "-o", videoPath,
-              url.trim(),
-            ];
-          }
+          // Use exact format ID + best audio — yt-dlp fetches fresh URLs during download
+          // This avoids both stale URL / HTTP 416 errors AND wrong resolution selection
+          let videoArgs = [
+            ...getBaseArgs(),
+            "-f", `${formatId}+bestaudio`,
+            "--merge-output-format", "mp4",
+            "-o", mergedPath,
+            url.trim(),
+          ];
 
           send("status", { step: "downloading_video", percent: 15 });
           let videoResult = await runYtdlp(videoArgs, platform, false);
+
+          // If specific format + audio merge failed, try just the video format alone
+          if (!videoResult.success) {
+            videoArgs = [
+              ...getBaseArgs(),
+              "-f", formatId,
+              "--merge-output-format", "mp4",
+              "-o", videoPath,
+              url.trim(),
+            ];
+            videoResult = await runYtdlp(videoArgs, platform, false);
+          }
 
           // Fallback: try muxed format 360p with audio
           if (!videoResult.success) {
@@ -244,11 +231,29 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          // Check if the downloaded file already has audio (muxed format)
+          // Check if yt-dlp already merged (format+bestaudio) or just downloaded video
           const videoPath_actual = videoResult.outputPath;
-          const isMuxed = videoPath_actual.endsWith(".mp4") || videoPath_actual.endsWith(".webm");
+          const alreadyMerged = videoPath_actual === mergedPath || videoPath_actual.endsWith(".mp4");
 
-          // Try to download audio, but don't fail if it's a muxed format
+          if (alreadyMerged && videoPath_actual === mergedPath) {
+            // yt-dlp already merged video+audio into merged.mp4
+            send("status", { step: "finalizing", percent: 95 });
+            const mergedBuffer = readFileSync(mergedPath);
+            try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+            send("status", { step: "finalizing", percent: 95 });
+            const fileId = Date.now().toString(36);
+            try { rmSync(MERGED_DIR, { recursive: true, force: true }); } catch {}
+            mkdirSync(MERGED_DIR, { recursive: true });
+            const savePath = join(MERGED_DIR, `${fileId}.mp4`);
+            const { writeFileSync } = await import("fs");
+            writeFileSync(savePath, mergedBuffer);
+            send("done", { fileUrl: `/api/download-merged/file?id=${fileId}&ext=mp4`, fileName: "download.mp4" });
+            controller.close();
+            return;
+          }
+
+          // Download audio separately and merge
           let audioResult: { success: boolean; outputPath?: string } = { success: false };
           const audioArgs = [
             ...getBaseArgs(),
