@@ -14,11 +14,11 @@ const BASE_ARGS = [
 ];
 
 const YOUTUBE_FALLBACK_ARGS = [
-  "--extractor-args", "youtube:player_client=ios",
+  "--extractor-args", "youtube:player_client=android",
 ];
 
 const YOUTUBE_MWEB_ARGS = [
-  "--extractor-args", "youtube:player_client=tv_embedded",
+  "--extractor-args", "youtube:player_client=web,mweb",
 ];
 
 const MERGED_DIR = join(tmpdir(), "sdl-merged");
@@ -206,6 +206,18 @@ export async function GET(request: NextRequest) {
             videoResult = await runYtdlp(bestVideoArgs, platform, false);
           }
 
+          // If bestvideo also failed, try muxed format (360p with audio)
+          if (!videoResult.success) {
+            const muxedArgs = [
+              ...BASE_ARGS,
+              "-f", "18/best[ext=mp4]/best",
+              "--merge-output-format", "mp4",
+              "-o", videoPath,
+              url.trim(),
+            ];
+            videoResult = await runYtdlp(muxedArgs, platform, false);
+          }
+
           if (!videoResult.success || !videoResult.outputPath) {
             try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
             send("error", { message: videoResult.error || "Video download failed" });
@@ -213,39 +225,47 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          send("status", { step: "downloading_audio", percent: 40 });
+          // Check if the downloaded file already has audio (muxed format)
+          const videoPath_actual = videoResult.outputPath;
+          const isMuxed = videoPath_actual.endsWith(".mp4") || videoPath_actual.endsWith(".webm");
+
+          // Try to download audio, but don't fail if it's a muxed format
+          let audioResult: { success: boolean; outputPath?: string } = { success: false };
           const audioArgs = [
             ...BASE_ARGS,
             "-f", "bestaudio[ext=m4a]/bestaudio/best",
-            "-x", "--audio-format", "mp4", "--audio-quality", "256K",
+            "-x", "--audio-format", "m4a", "--audio-quality", "256K",
             "-o", audioPath,
             url.trim(),
           ];
-          const audioResult = await runYtdlp(audioArgs, platform);
-          if (!audioResult.success || !audioResult.outputPath) {
+          audioResult = await runYtdlp(audioArgs, platform, false);
+
+          if (audioResult.success && audioResult.outputPath) {
+            // Got separate audio - merge video + audio
+            send("status", { step: "merging", percent: 70 });
+            const ffmpegResult = await runFfmpeg([
+              "-y",
+              "-i", videoPath_actual,
+              "-i", audioResult.outputPath,
+              "-c:v", "copy",
+              "-c:a", "aac",
+              "-movflags", "+faststart",
+              mergedPath,
+            ]);
+
             try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-            send("error", { message: audioResult.error || "Audio download failed" });
-            controller.close();
-            return;
-          }
 
-          send("status", { step: "merging", percent: 70 });
-          const ffmpegResult = await runFfmpeg([
-            "-y",
-            "-i", videoResult.outputPath,
-            "-i", audioResult.outputPath,
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-movflags", "+faststart",
-            mergedPath,
-          ]);
-
-          try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-
-          if (!ffmpegResult.success) {
-            send("error", { message: ffmpegResult.error || "Merge failed" });
-            controller.close();
-            return;
+            if (!ffmpegResult.success) {
+              send("error", { message: ffmpegResult.error || "Merge failed" });
+              controller.close();
+              return;
+            }
+          } else {
+            // No separate audio (muxed format) - just copy the video file
+            send("status", { step: "merging", percent: 70 });
+            const { copyFileSync } = await import("fs");
+            copyFileSync(videoPath_actual, mergedPath);
+            try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
           }
 
           send("status", { step: "finalizing", percent: 95 });

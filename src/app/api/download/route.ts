@@ -15,11 +15,11 @@ const BASE_ARGS = [
 ];
 
 const YOUTUBE_FALLBACK_ARGS = [
-  "--extractor-args", "youtube:player_client=ios",
+  "--extractor-args", "youtube:player_client=android",
 ];
 
 const YOUTUBE_MWEB_ARGS = [
-  "--extractor-args", "youtube:player_client=tv_embedded",
+  "--extractor-args", "youtube:player_client=web,mweb",
 ];
 
 function detectPlatform(url: string): "youtube" | "instagram" | "facebook" | "tiktok" | "twitter" | "unknown" {
@@ -174,49 +174,72 @@ export async function GET(request: NextRequest) {
       ], platform, false);
     }
 
+    // Fallback to muxed format if DASH not available
+    if (!videoResult.success) {
+      videoResult = await runYtdlp([
+        ...BASE_ARGS,
+        "-f", "18/best[ext=mp4]/best",
+        "--merge-output-format", "mp4",
+        "-o", videoPath,
+        url.trim(),
+      ], platform, false);
+    }
+
     if (!videoResult.success || !videoResult.outputPath) {
       try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
       return Response.json({ error: videoResult.error || "Video download failed" }, { status: 500 });
     }
 
-    const audioArgs = [
+    // Try to download audio separately
+    const audioResult = await runYtdlp([
       ...BASE_ARGS,
-      "-f", "bestaudio/best",
-      "-x", "--audio-format", "mp4", "--audio-quality", "256K",
+      "-f", "bestaudio[ext=m4a]/bestaudio/best",
+      "-x", "--audio-format", "m4a", "--audio-quality", "256K",
       "-o", audioPath,
       url.trim(),
-    ];
-    const audioResult = await runYtdlp(audioArgs, platform);
-    if (!audioResult.success || !audioResult.outputPath) {
+    ], platform, false);
+
+    if (audioResult.success && audioResult.outputPath) {
+      // Got separate audio - merge
+      const ffmpegResult = await runFfmpeg([
+        "-y",
+        "-i", videoResult.outputPath,
+        "-i", audioResult.outputPath,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        mergedPath,
+      ]);
+
       try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-      return Response.json({ error: audioResult.error || "Audio download failed" }, { status: 500 });
+
+      if (!ffmpegResult.success) {
+        return Response.json({ error: ffmpegResult.error || "Merge failed" }, { status: 500 });
+      }
+
+      const mergedBuffer = readFileSync(mergedPath);
+      return new Response(mergedBuffer, {
+        status: 200,
+        headers: {
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "Content-Type": contentType,
+          "Content-Length": mergedBuffer.length.toString(),
+        },
+      });
+    } else {
+      // Muxed format - just serve the video file
+      const fileBuffer = readFileSync(videoResult.outputPath);
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+
+      return new Response(fileBuffer, {
+        status: 200,
+        headers: {
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "Content-Type": contentType,
+          "Content-Length": fileBuffer.length.toString(),
+        },
+      });
     }
-
-    const ffmpegResult = await runFfmpeg([
-      "-y",
-      "-i", videoResult.outputPath,
-      "-i", audioResult.outputPath,
-      "-c:v", "copy",
-      "-c:a", "aac",
-      "-movflags", "+faststart",
-      mergedPath,
-    ]);
-
-    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-
-    if (!ffmpegResult.success) {
-      return Response.json({ error: ffmpegResult.error || "Merge failed" }, { status: 500 });
-    }
-
-    const mergedBuffer = readFileSync(mergedPath);
-    return new Response(mergedBuffer, {
-      status: 200,
-      headers: {
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Content-Type": contentType,
-        "Content-Length": mergedBuffer.length.toString(),
-      },
-    });
   }
 
   if (isAudioOnly) {
