@@ -1,10 +1,11 @@
 import { type NextRequest } from "next/server";
 import { writeFileSync, existsSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 
 export const dynamic = "force-dynamic";
 
-const COOKIE_FILE = join(process.cwd(), "cookies.txt");
+const COOKIE_FILE = join(tmpdir(), "cookies.txt");
 
 export async function POST(request: NextRequest) {
   try {

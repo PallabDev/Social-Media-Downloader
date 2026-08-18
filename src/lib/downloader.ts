@@ -2,10 +2,11 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 
 const execFileAsync = promisify(execFile);
 
-const COOKIE_FILE = join(process.cwd(), "cookies.txt");
+const COOKIE_FILE = join(tmpdir(), "cookies.txt");
 
 function getCookieArgs(): string[] {
   if (existsSync(COOKIE_FILE)) {

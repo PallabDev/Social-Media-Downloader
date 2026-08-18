@@ -7,7 +7,7 @@ import { tmpdir } from "os";
 
 export const dynamic = "force-dynamic";
 
-const COOKIE_FILE = join(process.cwd(), "cookies.txt");
+const COOKIE_FILE = join(tmpdir(), "cookies.txt");
 
 function getCookieArgs(): string[] {
   if (existsSync(COOKIE_FILE)) {
