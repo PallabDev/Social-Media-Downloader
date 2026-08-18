@@ -94,10 +94,10 @@ function processFormats(formats: RawFormat[]): ProcessedFormat[] {
     if (!hasVideo && !hasAudio) continue;
     if (f.ext === "mhtml" || f.ext === "json") continue;
 
-    // Create a dedup key based on resolution + codec combo
+    // Create a dedup key based on resolution + extension only (keep best bitrate per resolution)
     const height = f.height || 0;
     const fps = f.fps || 0;
-    const dedupKey = `${height}p${fps}_${f.vcodec}_${f.acodec}`;
+    const dedupKey = `${height}p${fps}_${f.ext}`;
     if (seen.has(dedupKey)) continue;
     seen.add(dedupKey);
 
