@@ -13,12 +13,17 @@ const log = createChildLogger("downloader");
 
 export function getBaseArgs(): string[] {
   const hasCookies = existsSync(COOKIE_FILE);
+  const POT_SERVER = process.env.POT_SERVER_URL || "http://bgutil-pot:4416";
+  const extractorArgs = hasCookies
+    ? `youtubepot-bgutilhttp:base_url=${POT_SERVER}`
+    : `youtubepot-bgutilhttp:base_url=${POT_SERVER};youtube:player_client=android_vr,android,web,mweb`;
   return [
     "--no-warnings",
     "--no-playlist",
     "--js-runtimes", "node",
     "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    ...(hasCookies ? ["--cookies", COOKIE_FILE] : ["--extractor-args", "youtube:player_client=android_vr,android,web,mweb"]),
+    "--extractor-args", extractorArgs,
+    ...(hasCookies ? ["--cookies", COOKIE_FILE] : []),
   ];
 }
 

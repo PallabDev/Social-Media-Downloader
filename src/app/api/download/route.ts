@@ -5,23 +5,13 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { createChildLogger } from "@/lib/logger";
+import { getBaseArgs } from "@/lib/downloader";
 
 export const dynamic = "force-dynamic";
 
 const log = createChildLogger("api:download");
 
 const COOKIE_FILE = join(tmpdir(), "cookies.txt");
-
-function getBaseArgs(): string[] {
-  const hasCookies = existsSync(COOKIE_FILE);
-  return [
-    "--no-warnings",
-    "--no-playlist",
-    "--js-runtimes", "node",
-    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    ...(hasCookies ? ["--cookies", COOKIE_FILE] : ["--extractor-args", "youtube:player_client=android_vr,android,web,mweb"]),
-  ];
-}
 
 function getYoutubeFallbackArgs(): string[] {
   return ["--js-runtimes", "node", "--extractor-args", "youtube:player_client=android"];

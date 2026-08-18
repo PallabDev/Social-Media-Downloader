@@ -13,8 +13,8 @@ RUN apk add --no-cache \
     g++ \
     make
 
-# Install yt-dlp + curl_cffi
-RUN pip3 install --break-system-packages 'yt-dlp' 'curl_cffi<0.7'
+# Install yt-dlp + curl_cffi + bgutil PO Token provider plugin
+RUN pip3 install --break-system-packages 'yt-dlp' 'curl_cffi<0.7' 'bgutil-ytdlp-pot-provider'
 
 # Verify installations
 RUN ffmpeg -version && yt-dlp --version
@@ -44,8 +44,7 @@ RUN apk add --no-cache \
     gcc \
     musl-dev \
     g++ \
-    make \
-    git
+    make
 
 # Install yt-dlp + curl_cffi + bgutil PO Token provider plugin
 RUN pip3 install --break-system-packages 'yt-dlp' 'curl_cffi<0.7' 'bgutil-ytdlp-pot-provider'
@@ -64,13 +63,6 @@ COPY --from=base --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 RUN mkdir -p /app/downloads && chown nextjs:nodejs /app/downloads
 RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
-
-# Clone bgutil PO Token server and build it
-RUN git clone --depth 1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil \
-    && cd /opt/bgutil/server \
-    && npm install --ignore-optional \
-    && ./node_modules/.bin/tsc \
-    && chown -R nextjs:nodejs /opt/bgutil
 
 USER nextjs
 
